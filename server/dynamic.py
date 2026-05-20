@@ -254,6 +254,125 @@ def enum_all_visible_windows(include_hidden: bool = False, with_icons: bool = Tr
     return out
 
 
+def expand_window_list(widget: dict[str, Any], context: dict[str, Any]) -> list[dict[str, Any]]:
+    """Replace a window_list widget with a grid of focus/activate buttons.
+
+    Source values:
+      - 'process_windows' (default): visible top-level windows of the active process
+      - 'chrome_tabs': open Chrome tabs via DevTools Protocol (port 9222)
+    """
+    from . import chrome
+
+    props = widget.get("props") or {}
+    source = (props.get("source") or "process_windows").lower()
+    cols = max(1, int(props.get("columns") or 2))
+    gap = int(props.get("gap") or 12)
+    btn_h = int(props.get("button_height") or 90)
+    rows_limit = int(props.get("max_rows") or 0)  # 0 = no limit; just keep stacking
+
+    x0 = int(widget.get("x", 0))
+    y0 = int(widget.get("y", 0))
+    total_w = int(widget.get("w", 800))
+    btn_w = max(40, (total_w - (cols - 1) * gap) // cols)
+
+    items = _list_items(source, context)
+    if rows_limit:
+        items = items[: cols * rows_limit]
+
+    out: list[dict[str, Any]] = []
+    # If empty, show a small label inside the widget's bounds so the user knows why.
+    if not items:
+        out.append({
+            "id": (widget.get("id") or "wl") + "_empty",
+            "type": "label",
+            "x": x0, "y": y0, "w": total_w, "h": 24,
+            "props": {
+                "text": _empty_message(source),
+                "align": "left", "size": 14,
+            },
+        })
+        return out
+
+    base_id = widget.get("id") or "wl"
+    for i, item in enumerate(items):
+        row = i // cols
+        col = i % cols
+        out.append({
+            "id": f"{base_id}_{item['key']}",
+            "type": "button",
+            "x": x0 + col * (btn_w + gap),
+            "y": y0 + row * (btn_h + gap),
+            "w": btn_w,
+            "h": btn_h,
+            "props": {
+                "label": item["label"],
+                "action": item["action"],
+            },
+        })
+    return out
+
+
+def _list_items(source: str, context: dict[str, Any]) -> list[dict[str, Any]]:
+    from . import chrome
+    if source == "chrome_tabs":
+        if chrome.available():
+            return [
+                {
+                    "key": "tab_" + (t.get("id") or "")[:10],
+                    "label": (t.get("title") or "(untitled)")[:60],
+                    "action": {"type": "chrome_tab", "tab_id": t.get("id") or ""},
+                }
+                for t in chrome.list_tabs()
+            ]
+        # CDP not enabled — fall back to Chrome's OS windows. Each Chrome window
+        # title is "<active tab title> - Google Chrome", which is still useful.
+        wins = enum_windows_for_process_name("chrome.exe")
+        return [
+            {
+                "key": f"hwnd{hwnd}",
+                "label": (title or "(untitled)")[:60],
+                "action": {"type": "focus_window", "hwnd": int(hwnd)},
+            }
+            for hwnd, title in wins
+        ]
+
+    # process_windows (default)
+    pid = int(context.get("pid") or 0)
+    process = context.get("process") or ""
+    wins = enum_windows_for_process(pid) if pid else []
+    if not wins and process:
+        wins = enum_windows_for_process_name(process)
+    return [
+        {
+            "key": f"hwnd{hwnd}",
+            "label": (title or "(untitled)")[:60],
+            "action": {"type": "focus_window", "hwnd": int(hwnd)},
+        }
+        for hwnd, title in wins
+    ]
+
+
+def _empty_message(source: str) -> str:
+    if source == "chrome_tabs":
+        return "chrome not running"
+    return "no windows"
+
+
+def window_list_fingerprint(cfg: dict[str, Any] | None, context: dict[str, Any]) -> tuple:
+    """Hashable signature of every window_list widget's contents in cfg.
+    Used by the poll loop to detect changes (tab opened, window closed) and
+    trigger a re-broadcast."""
+    if not cfg:
+        return ()
+    sigs: list[tuple] = []
+    for w in cfg.get("widgets") or []:
+        if w.get("type") != "window_list":
+            continue
+        items = _list_items((w.get("props") or {}).get("source", "process_windows"), context)
+        sigs.append((w.get("id"), tuple((it["key"], it["label"]) for it in items)))
+    return tuple(sigs)
+
+
 def enum_distinct_processes(include_hidden: bool = True) -> list[dict[str, Any]]:
     """Distinct processes with at least one visible top-level window, with icons.
 

@@ -8,20 +8,28 @@ from __future__ import annotations
 
 import json
 import socket
+import time
 import urllib.request
 
 CDP_HOST = "127.0.0.1"
 CDP_PORT = 9222
 TIMEOUT_S = 0.4
+_AVAIL_CACHE = {"value": False, "ts": 0.0}
+_AVAIL_TTL = 5.0  # don't re-probe more than once every N seconds
 
 
 def available() -> bool:
-    """True if Chrome is listening on the debug port right now."""
+    """True if Chrome is listening on the debug port right now (cached)."""
+    now = time.time()
+    if now - _AVAIL_CACHE["ts"] < _AVAIL_TTL:
+        return _AVAIL_CACHE["value"]
     try:
         with socket.create_connection((CDP_HOST, CDP_PORT), timeout=TIMEOUT_S):
-            return True
+            _AVAIL_CACHE["value"] = True
     except OSError:
-        return False
+        _AVAIL_CACHE["value"] = False
+    _AVAIL_CACHE["ts"] = now
+    return _AVAIL_CACHE["value"]
 
 
 def list_tabs() -> list[dict]:

@@ -103,6 +103,22 @@ def _python(action: dict[str, Any], payload: dict[str, Any], context: dict, widg
     registry.call_on_value(provider, value, widget, context)
 
 
+def _chrome_tab(action: dict[str, Any], payload: dict[str, Any], context: dict, widget: dict) -> None:
+    """Activate a Chrome tab via CDP and bring its Chrome window to the front."""
+    from . import chrome as cdp
+    tab_id = action.get("tab_id") or payload.get("tab_id")
+    if not tab_id:
+        return
+    if not cdp.activate_tab(tab_id):
+        return
+    # Match the now-active tab's title to the OS-level Chrome window and focus it.
+    tab = next((t for t in cdp.list_tabs() if t.get("id") == tab_id), None)
+    title = (tab or {}).get("title") or ""
+    hwnd = cdp.find_window_for_tab(title)
+    if hwnd:
+        _focus_window({"hwnd": hwnd}, {}, context, widget)
+
+
 _HANDLERS = {
     "hotkey": _hotkey,
     "command": _command,
@@ -110,4 +126,5 @@ _HANDLERS = {
     "focus_window": _focus_window,
     "switch_desktop": _switch_desktop,
     "python": _python,
+    "chrome_tab": _chrome_tab,
 }

@@ -39,6 +39,7 @@ app.mount("/editor-static", StaticFiles(directory=WEB_DIR / "editor"), name="edi
 _loop: asyncio.AbstractEventLoop | None = None
 _current_context: dict = {"process": "", "title": "", "win_class": "", "pid": 0}
 _last_window_fingerprint: tuple = ()
+_last_window_list_fp: tuple = ()
 _window_poll_task: asyncio.Task | None = None
 _desktop_poll_task: asyncio.Task | None = None
 _last_desktops_fp: tuple = ()
@@ -220,15 +221,37 @@ def _schedule_broadcast() -> None:
 
 
 async def _broadcast_active() -> None:
-    global _last_window_fingerprint
-    cfg = _resolve_layout()
+    global _last_window_fingerprint, _last_window_list_fp, _last_raw_cfg
+    raw = _resolve_raw()
+    _last_raw_cfg = raw
+    cfg = _expand_dynamic_widgets(raw) if raw else None
+    cfg = _augment_with_context(cfg) if cfg else None
     theme = _theme_for(cfg)
     if cfg and cfg.get("synthetic"):
         _last_window_fingerprint = dynamic.fingerprint(
             _current_context.get("pid", 0),
             _current_context.get("process", ""),
         )
+    _last_window_list_fp = dynamic.window_list_fingerprint(raw, _current_context)
     await hub.broadcast_layout(cfg, theme)
+
+
+def _resolve_raw() -> dict | None:
+    """Same as _resolve_layout but returns the cfg BEFORE expanding window_list
+    widgets (used for fingerprinting and re-broadcasting)."""
+    process = _current_context.get("process", "")
+    title = _current_context.get("title", "")
+    win_class = _current_context.get("win_class", "")
+    pid = _current_context.get("pid", 0)
+
+    cfg = config.match(process, title, win_class)
+    if cfg and cfg.get("name", "").lower() != "default":
+        return cfg
+    if process:
+        synthetic = dynamic.generate_fallback_layout(process, pid)
+        if synthetic:
+            return synthetic
+    return cfg
 
 
 def _resolve_layout() -> dict | None:
@@ -239,7 +262,7 @@ def _resolve_layout() -> dict | None:
 
     cfg = config.match(process, title, win_class)
     if cfg and cfg.get("name", "").lower() != "default":
-        return _augment_with_context(cfg)
+        return _augment_with_context(_expand_dynamic_widgets(cfg))
 
     if process:
         synthetic = dynamic.generate_fallback_layout(process, pid)
@@ -247,8 +270,22 @@ def _resolve_layout() -> dict | None:
             return _augment_with_context(synthetic)
 
     if cfg:  # default.yaml
-        return _augment_with_context(cfg)
+        return _augment_with_context(_expand_dynamic_widgets(cfg))
     return None
+
+
+def _expand_dynamic_widgets(cfg: dict) -> dict:
+    """Replace any window_list widgets in cfg with their expanded button grids."""
+    widgets = cfg.get("widgets") or []
+    if not any(w.get("type") == "window_list" for w in widgets):
+        return cfg
+    out: list[dict] = []
+    for w in widgets:
+        if w.get("type") == "window_list":
+            out.extend(dynamic.expand_window_list(w, _current_context))
+        else:
+            out.append(w)
+    return {**cfg, "widgets": out}
 
 
 def _augment_with_context(cfg: dict) -> dict:
@@ -273,30 +310,45 @@ def _theme_for(cfg: dict | None) -> dict:
 
 
 async def _poll_window_changes() -> None:
-    """Once per second, if any client is showing a synthetic layout, rebuild
-    when the window set for the active process changes."""
-    global _last_window_fingerprint
+    """Once per second, rebuild and rebroadcast when anything driving a
+    dynamic widget has changed (synthetic fallback, window_list contents,
+    chrome_tabs). The hub's per-client dedupe means no-op ticks are free."""
+    global _last_window_fingerprint, _last_window_list_fp
     while True:
         try:
             await asyncio.sleep(1.0)
-            async with hub.lock:
-                show_synthetic = any(
-                    state.get("cfg") and state["cfg"].get("synthetic")
-                    for state in hub.clients.values()
-                )
-            if not show_synthetic:
-                continue
-            current_fp = dynamic.fingerprint(
+            raw = _last_raw_cfg or {}
+            showing_synthetic = bool(raw.get("synthetic"))
+            has_window_list = any(
+                w.get("type") == "window_list"
+                for w in (raw.get("widgets") or [])
+            )
+
+            cur_fp_proc = dynamic.fingerprint(
                 _current_context.get("pid", 0),
                 _current_context.get("process", ""),
             )
-            if current_fp != _last_window_fingerprint:
-                _last_window_fingerprint = current_fp
+            cur_fp_wl = (
+                dynamic.window_list_fingerprint(raw, _current_context)
+                if has_window_list else ()
+            )
+
+            proc_changed = showing_synthetic and cur_fp_proc != _last_window_fingerprint
+            wl_changed = has_window_list and cur_fp_wl != _last_window_list_fp
+
+            if proc_changed or wl_changed:
+                _last_window_fingerprint = cur_fp_proc
+                _last_window_list_fp = cur_fp_wl
                 await _broadcast_active()
         except asyncio.CancelledError:
             return
         except Exception as e:
             print(f"[poll] window-change loop error: {e}", flush=True)
+
+
+# Most recently resolved RAW cfg (pre-expansion). The poller fingerprints
+# any window_list widgets in here to decide whether to rebroadcast.
+_last_raw_cfg: dict | None = None
 
 
 async def _poll_desktop_changes() -> None:
@@ -655,8 +707,9 @@ async def _handle(ws: WebSocket, msg: dict) -> None:
         # editor → tablet preview: broadcast a transient layout to tablet devices
         layout = msg.get("layout")
         if layout:
-            theme = themes.get((layout.get("canvas") or {}).get("theme"))
-            await hub.broadcast_layout(_augment_with_context(layout), theme)
+            expanded = _expand_dynamic_widgets(layout)
+            theme = themes.get((expanded.get("canvas") or {}).get("theme"))
+            await hub.broadcast_layout(_augment_with_context(expanded), theme)
     else:
         print(f"[ws] unhandled: {kind}", flush=True)
 

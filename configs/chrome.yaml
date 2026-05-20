@@ -76,3 +76,26 @@ widgets:
     props:
       label: HARD RELOAD
       action: { type: hotkey, keys: ctrl+shift+r }
+
+  - id: tabs_label
+    type: label
+    x: 40
+    y: 388
+    w: 800
+    h: 20
+    props:
+      text: TABS
+      align: left
+      size: 12
+
+  - id: tabs
+    type: window_list
+    x: 40
+    y: 420
+    w: 1520
+    h: 540
+    props:
+      source: chrome_tabs
+      columns: 3
+      button_height: 90
+      gap: 12

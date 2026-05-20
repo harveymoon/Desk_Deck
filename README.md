@@ -313,6 +313,33 @@ Every widget shares the same envelope; type-specific fields go under
 | `orientation` | string | `horizontal` or `vertical`.                    |
 | `action`      | object | Called with `value` on change (debounced 30 ms).|
 
+### window_list
+
+A *dynamic* widget that the server expands into a grid of buttons at render
+time. Use it to embed a list of windows or Chrome tabs inside any layout —
+e.g. the shipped `chrome.yaml` has a `window_list` below its hotkey buttons
+that lists every Chrome window/tab so you can switch from the tablet.
+
+| Prop            | Type   | Notes                                                                  |
+|-----------------|--------|------------------------------------------------------------------------|
+| `source`        | string | `process_windows` (default) or `chrome_tabs`.                          |
+| `columns`       | number | Grid columns. Default 2.                                               |
+| `button_height` | number | Per-row height in canvas px. Default 90.                               |
+| `gap`           | number | Gap between buttons. Default 12.                                       |
+| `max_rows`      | number | 0 = unbounded. Otherwise clip after this many rows.                    |
+
+Source behavior:
+
+- **`process_windows`** — visible top-level windows of the foreground process.
+  Each button is wired to `focus_window` with the HWND baked in.
+- **`chrome_tabs`** — Chrome tabs via DevTools Protocol if reachable on
+  `127.0.0.1:9222`, otherwise falls back to listing Chrome's OS windows
+  (whose titles already reflect the active tab). Tab buttons use the
+  `chrome_tab` action; window buttons use `focus_window`.
+
+The poller refreshes once a second when a layout contains `window_list`,
+so opening a new tab or window auto-updates the tablet within ~1 s.
+
 ### rotary
 
 A circular dial. Same props as slider but rendered as an SVG ring with a
@@ -415,6 +442,16 @@ action: { type: python, provider: set_bpm }
 Calls the provider's `on_value(value, widget, context)` (sliders/rotaries
 pass `value`; buttons pass `"press"`). Use this to wire custom logic
 without writing a new action type.
+
+### `chrome_tab`
+
+```yaml
+action: { type: chrome_tab, tab_id: "..." }
+```
+
+Activates a Chrome tab by DevTools target id and brings its parent Chrome
+window to the OS foreground. Generated automatically by `window_list`
+widgets with `source: chrome_tabs`; rarely written by hand.
 
 ---
 

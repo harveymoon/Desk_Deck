@@ -366,6 +366,27 @@ function describeArc(cx, cy, r, start, end) {
   return `M ${s.x} ${s.y} A ${r} ${r} 0 ${large} 0 ${e.x} ${e.y}`;
 }
 
+// Editor-only placeholder for window_list (the server expands it to buttons
+// before the tablet ever sees the layout, so the runtime should never hit this
+// — but if it does, render a clear stub).
+function renderWindowList(w, _emit) {
+  const el = document.createElement("div");
+  el.className = "dd-widget dd-window-list-stub";
+  el.style.border = "1px dashed var(--accent)";
+  el.style.background = "var(--surface)";
+  el.style.color = "var(--text-dim)";
+  el.style.fontFamily = "var(--font-mono, monospace)";
+  el.style.fontSize = "12px";
+  el.style.display = "flex";
+  el.style.alignItems = "center";
+  el.style.justifyContent = "center";
+  el.style.textAlign = "center";
+  el.style.padding = "12px";
+  const p = w.props || {};
+  el.textContent = `▦ window_list · source: ${p.source || "process_windows"} · ${p.columns || 2} cols`;
+  return el;
+}
+
 const RENDERERS = {
   button: renderButton,
   label: renderLabel,
@@ -373,4 +394,5 @@ const RENDERERS = {
   textbox: renderTextbox,
   input: renderInput,
   rotary: renderRotary,
+  window_list: renderWindowList,
 };

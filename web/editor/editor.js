@@ -61,24 +61,26 @@ function uid(prefix) {
 
 function defaultProps(type) {
   switch (type) {
-    case "button":  return { label: "BUTTON", action: { type: "hotkey", keys: "" } };
-    case "label":   return { text: "LABEL", align: "left", size: 12 };
-    case "slider":  return { label: "VAL", min: 0, max: 100, step: 1, orientation: "horizontal", action: { type: "python", provider: "" } };
-    case "textbox": return { monospace: true, max_lines: 200, source: "" };
-    case "input":   return { placeholder: "type...", submit_label: "SEND", action: { type: "python", provider: "" } };
-    case "rotary":  return { label: "VAL", min: 0, max: 100, step: 1, action: { type: "python", provider: "" } };
-    default:        return {};
+    case "button":      return { label: "BUTTON", action: { type: "hotkey", keys: "" } };
+    case "label":       return { text: "LABEL", align: "left", size: 12 };
+    case "slider":      return { label: "VAL", min: 0, max: 100, step: 1, orientation: "horizontal", action: { type: "python", provider: "" } };
+    case "textbox":     return { monospace: true, max_lines: 200, source: "" };
+    case "input":       return { placeholder: "type...", submit_label: "SEND", action: { type: "python", provider: "" } };
+    case "rotary":      return { label: "VAL", min: 0, max: 100, step: 1, action: { type: "python", provider: "" } };
+    case "window_list": return { source: "process_windows", columns: 3, button_height: 90, gap: 12 };
+    default:            return {};
   }
 }
 
 function defaultSize(type) {
   switch (type) {
-    case "label":   return { w: 400, h: 24 };
-    case "textbox": return { w: 600, h: 300 };
-    case "slider":  return { w: 320, h: 80 };
-    case "input":   return { w: 400, h: 60 };
-    case "rotary":  return { w: 160, h: 160 };
-    default:        return { w: 200, h: 100 };
+    case "label":       return { w: 400, h: 24 };
+    case "textbox":     return { w: 600, h: 300 };
+    case "slider":      return { w: 320, h: 80 };
+    case "input":       return { w: 400, h: 60 };
+    case "rotary":      return { w: 160, h: 160 };
+    case "window_list": return { w: 1200, h: 500 };
+    default:            return { w: 200, h: 100 };
   }
 }
 
@@ -247,6 +249,12 @@ function renderInspector() {
     text("Submit label", "props.submit_label");
     sel("Action", "props.action.type", ["python", "command"]);
     actionFields(w, wrap);
+  } else if (w.type === "window_list") {
+    sel("Source", "props.source", ["process_windows", "chrome_tabs"]);
+    num("Columns", "props.columns", { min: 1 });
+    num("Button height", "props.button_height", { min: 40 });
+    num("Gap", "props.gap", { min: 0 });
+    num("Max rows", "props.max_rows", { min: 0 });
   }
 
   const actions = document.createElement("div");
