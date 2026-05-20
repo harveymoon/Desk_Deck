@@ -216,29 +216,54 @@ overlayBack.addEventListener("click", () => {
 });
 
 // Apps overlay state: top-level shows one tile per process; drilling in shows
-// the windows / tabs of that one app.
-let _appsCache = { wins: [], tabs: null, ts: 0 };
+// the windows / tabs of that one app. Cache survives overlay close/reopen
+// so re-entry feels instant; we re-fetch in the background and silently
+// re-render when fresh data arrives.
+let _appsCache = { wins: [], tabs: null, chromeWindows: null, chromeAvailable: false, ts: 0 };
 let _appsDrill = null;       // null = top-level; otherwise a process name
+let _appsFetching = false;
 
 async function fetchApps() {
-  overlayBody.innerHTML = "<div class='dd-tile'>loading…</div>";
-  const [tabsResp, winsResp] = await Promise.allSettled([
-    fetch("/api/chrome/tabs?t=" + encodeURIComponent(token)).then(r => r.json()),
-    fetch("/api/windows?t=" + encodeURIComponent(token)).then(r => r.json()),
-  ]);
-  if (winsResp.status !== "fulfilled") {
-    overlayBody.innerHTML = "<div class='dd-tile'>failed to load windows</div>";
+  // If we have any cached data, paint it immediately and refresh in the
+  // background. Otherwise show a loading hint and wait.
+  if (_appsCache.wins && _appsCache.wins.length) {
+    renderAppsView();
+    refreshAppsAsync();
     return;
   }
-  _appsCache = {
-    wins: winsResp.value || [],
-    tabs: (tabsResp.status === "fulfilled" && tabsResp.value.available) ? tabsResp.value.tabs : null,
-    chromeWindows: (tabsResp.status === "fulfilled" && tabsResp.value.available) ? tabsResp.value.windows : null,
-    chromeAvailable: tabsResp.status === "fulfilled" && tabsResp.value.available,
-    ts: Date.now(),
-  };
-  _appsDrill = null;
-  renderAppsView();
+  overlayBody.innerHTML = "<div class='dd-tile'>loading…</div>";
+  await refreshAppsAsync();
+}
+
+async function refreshAppsAsync() {
+  if (_appsFetching) return;
+  _appsFetching = true;
+  try {
+    const [tabsResp, winsResp] = await Promise.allSettled([
+      fetch("/api/chrome/tabs?t=" + encodeURIComponent(token)).then(r => r.json()),
+      fetch("/api/windows?t=" + encodeURIComponent(token)).then(r => r.json()),
+    ]);
+    if (winsResp.status !== "fulfilled") {
+      // If we never had cached data, surface the failure; otherwise stay quiet.
+      if (!_appsCache.wins.length) {
+        overlayBody.innerHTML = "<div class='dd-tile'>failed to load windows</div>";
+      }
+      return;
+    }
+    _appsCache = {
+      wins: winsResp.value || [],
+      tabs: (tabsResp.status === "fulfilled" && tabsResp.value.available) ? tabsResp.value.tabs : null,
+      chromeWindows: (tabsResp.status === "fulfilled" && tabsResp.value.available) ? tabsResp.value.windows : null,
+      chromeAvailable: tabsResp.status === "fulfilled" && tabsResp.value.available,
+      ts: Date.now(),
+    };
+    // Only re-render if the user is still looking at the apps overlay.
+    if (!overlay.hidden && overlay.dataset.kind === "apps") {
+      renderAppsView();
+    }
+  } finally {
+    _appsFetching = false;
+  }
 }
 
 function renderAppsView() {
