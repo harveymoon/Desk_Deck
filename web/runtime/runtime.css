@@ -251,9 +251,9 @@ html, body {
 }
 .dd-overlay[hidden] { display: none; }
 .dd-overlay-head {
-  display: flex; align-items: center;
+  display: flex; align-items: stretch;
   height: 60px;
-  padding: 0 22px;
+  padding: 0;
   border-bottom: var(--border-w) solid var(--border);
   font-family: var(--font-mono);
   font-size: 14px;
@@ -261,7 +261,30 @@ html, body {
   text-transform: uppercase;
   color: var(--text-dim);
 }
-.dd-overlay-head span { flex: 1; }
+.dd-overlay-head > span,
+.dd-overlay-head > #overlay-title {
+  flex: 1;
+  display: flex; align-items: center;
+  padding: 0 22px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dd-back-btn {
+  border-right: var(--border-w) solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  border: none;
+  border-right: var(--border-w) solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 24px;
+  padding: 0 22px;
+  min-width: 64px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.dd-back-btn:hover, .dd-back-btn:active { background: var(--surface-2); color: var(--text); }
 .dd-overlay-close {
   appearance: none;
   background: transparent;

@@ -89,9 +89,10 @@ const tbName    = document.getElementById("tb-name");
 const tbSource  = document.getElementById("tb-source");
 const tbStatus  = document.getElementById("tb-status");
 const overlay   = document.getElementById("overlay");
-const overlayHead  = document.getElementById("overlay-title");
+const overlayTitle = document.getElementById("overlay-title");
 const overlayBody  = document.getElementById("overlay-body");
 const overlayClose = document.getElementById("overlay-close");
+const overlayBack  = document.getElementById("overlay-back");
 
 let currentLayout = null;
 let widgetEls = new Map(); // widget id -> DOM element
@@ -185,14 +186,16 @@ function openOverlay(kind) {
   overlay.hidden = false;
   overlayBody.innerHTML = "";
   overlayBody.classList.remove("is-bookmarks");
+  overlayBack.hidden = true;
+  _appsDrill = null;
   if (kind === "apps") {
-    overlayHead.textContent = "Apps — all visible windows";
+    overlayTitle.textContent = "Apps";
     fetchApps();
   } else if (kind === "spaces") {
-    overlayHead.textContent = "Spaces — virtual desktops";
+    overlayTitle.textContent = "Spaces — virtual desktops";
     fetchSpaces();
   } else if (kind === "bookmarks") {
-    overlayHead.textContent = "Bookmarks";
+    overlayTitle.textContent = "Bookmarks";
     fetchBookmarks();
   }
 }
@@ -201,23 +204,120 @@ function closeOverlay() {
   overlay.hidden = true;
   overlayBody.innerHTML = "";
   overlay.dataset.kind = "";
+  overlayBack.hidden = true;
+  _appsDrill = null;
 }
 
+overlayBack.addEventListener("click", () => {
+  _appsDrill = null;
+  overlayBack.hidden = true;
+  overlayTitle.textContent = "Apps";
+  renderAppsView();
+});
+
+// Apps overlay state: top-level shows one tile per process; drilling in shows
+// the windows / tabs of that one app.
+let _appsCache = { wins: [], tabs: null, ts: 0 };
+let _appsDrill = null;       // null = top-level; otherwise a process name
+
 async function fetchApps() {
-  overlayBody.innerHTML = "";
-  // Fetch tabs and windows in parallel
+  overlayBody.innerHTML = "<div class='dd-tile'>loading…</div>";
   const [tabsResp, winsResp] = await Promise.allSettled([
     fetch("/api/chrome/tabs?t=" + encodeURIComponent(token)).then(r => r.json()),
     fetch("/api/windows?t=" + encodeURIComponent(token)).then(r => r.json()),
   ]);
+  if (winsResp.status !== "fulfilled") {
+    overlayBody.innerHTML = "<div class='dd-tile'>failed to load windows</div>";
+    return;
+  }
+  _appsCache = {
+    wins: winsResp.value || [],
+    tabs: (tabsResp.status === "fulfilled" && tabsResp.value.available) ? tabsResp.value.tabs : null,
+    chromeAvailable: tabsResp.status === "fulfilled" && tabsResp.value.available,
+    ts: Date.now(),
+  };
+  _appsDrill = null;
+  renderAppsView();
+}
 
-  // Tabs section (only if CDP is available and there are tabs)
-  if (tabsResp.status === "fulfilled" && tabsResp.value.available && tabsResp.value.tabs.length) {
-    const section = document.createElement("div");
-    section.className = "dd-section-head";
-    section.textContent = `Chrome tabs · ${tabsResp.value.tabs.length}`;
-    overlayBody.appendChild(section);
-    for (const tab of tabsResp.value.tabs) {
+function renderAppsView() {
+  overlayBody.innerHTML = "";
+  if (_appsDrill) {
+    overlayBack.hidden = false;
+    renderAppsDrill(_appsDrill);
+  } else {
+    overlayBack.hidden = true;
+    overlayTitle.textContent = "Apps";
+    renderAppsRoot();
+  }
+}
+
+function renderAppsRoot() {
+  const wins = _appsCache.wins;
+  if (!wins.length) {
+    overlayBody.innerHTML = "<div class='dd-tile'>no visible windows</div>";
+    return;
+  }
+  // Group by process (case-insensitive).
+  const groups = new Map();
+  for (const w of wins) {
+    const key = (w.process || "(unknown)").toLowerCase();
+    if (!groups.has(key)) {
+      groups.set(key, { process: w.process || "(unknown)", icon: w.icon, windows: [], total: 0 });
+    }
+    const g = groups.get(key);
+    g.windows.push(w);
+    g.total++;
+    if (!g.icon && w.icon) g.icon = w.icon;
+  }
+
+  // Sort: alphabetical.
+  const list = Array.from(groups.values())
+    .sort((a, b) => a.process.toLowerCase().localeCompare(b.process.toLowerCase()));
+
+  for (const g of list) {
+    // Chrome with CDP shows tab-count subtitle and drills into tabs.
+    const isChrome = g.process.toLowerCase() === "chrome.exe";
+    const tabCount = (isChrome && _appsCache.tabs) ? _appsCache.tabs.length : null;
+    let meta;
+    if (g.total === 1) {
+      meta = g.windows[0].title;
+    } else if (tabCount !== null) {
+      meta = `${tabCount} tab${tabCount === 1 ? "" : "s"} · ${g.total} window${g.total === 1 ? "" : "s"}`;
+    } else {
+      meta = `${g.total} windows`;
+    }
+
+    const tile = buildTile({
+      title: prettyAppName(g.process),
+      meta,
+      icon: g.icon,
+    });
+    tile.addEventListener("click", () => {
+      // Single instance: focus directly.
+      const needsDrill = g.total > 1 || (isChrome && tabCount !== null && tabCount > 1);
+      if (!needsDrill) {
+        send({ t: "focus_hwnd", hwnd: g.windows[0].hwnd });
+        closeOverlay();
+      } else {
+        _appsDrill = g.process;
+        renderAppsView();
+      }
+    });
+    overlayBody.appendChild(tile);
+  }
+}
+
+function renderAppsDrill(processName) {
+  const isChrome = processName.toLowerCase() === "chrome.exe";
+  const wins = _appsCache.wins.filter(w => (w.process || "").toLowerCase() === processName.toLowerCase());
+  const showTabs = isChrome && _appsCache.tabs && _appsCache.tabs.length;
+
+  overlayTitle.textContent =
+    `${prettyAppName(processName)} · ${showTabs ? _appsCache.tabs.length + " tabs" : wins.length + " windows"}`;
+
+  if (showTabs) {
+    for (const tab of _appsCache.tabs) {
       const tile = buildTile({
         title: tab.title,
         meta: hostnameOf(tab.url),
@@ -230,42 +330,23 @@ async function fetchApps() {
       });
       overlayBody.appendChild(tile);
     }
-  }
-
-  // Windows section
-  if (winsResp.status !== "fulfilled") {
-    const err = document.createElement("div");
-    err.className = "dd-tile";
-    err.textContent = "failed to load windows";
-    overlayBody.appendChild(err);
     return;
   }
-  const wins = winsResp.value;
-  if (wins.length) {
-    const section = document.createElement("div");
-    section.className = "dd-section-head";
-    section.textContent = `Windows · ${wins.length}`;
-    overlayBody.appendChild(section);
-    for (const w of wins) {
-      const tile = buildTile({ title: w.title, meta: w.process || "—", icon: w.icon });
-      tile.addEventListener("click", () => {
-        send({ t: "focus_hwnd", hwnd: w.hwnd });
-        closeOverlay();
-      });
-      overlayBody.appendChild(tile);
-    }
-  } else if (!overlayBody.children.length) {
-    overlayBody.innerHTML = "<div class='dd-tile'>no visible windows</div>";
-  }
 
-  // Tabs-not-available hint, only if Chrome is in the windows list
-  if (tabsResp.status === "fulfilled" && !tabsResp.value.available &&
-      wins.some(w => (w.process || "").toLowerCase() === "chrome.exe")) {
-    const hint = document.createElement("div");
-    hint.className = "dd-tile dd-tile-hint";
-    hint.innerHTML = "Chrome tabs hidden — relaunch Chrome via <code>start_chrome_debug.bat</code> to enable tab listing.";
-    overlayBody.appendChild(hint);
+  for (const w of wins) {
+    const tile = buildTile({ title: w.title, meta: w.process || "—", icon: w.icon });
+    tile.addEventListener("click", () => {
+      send({ t: "focus_hwnd", hwnd: w.hwnd });
+      closeOverlay();
+    });
+    overlayBody.appendChild(tile);
   }
+}
+
+function prettyAppName(process) {
+  const name = process.replace(/\.exe$/i, "");
+  // CamelCase → "Camel Case" for nicer display
+  return name.replace(/([a-z])([A-Z])/g, "$1 $2");
 }
 
 function buildTile({ title, meta, icon, cls = "" }) {
