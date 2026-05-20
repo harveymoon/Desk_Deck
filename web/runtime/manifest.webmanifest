@@ -2,17 +2,20 @@
   "name": "Desk Deck",
   "short_name": "DeskDeck",
   "description": "Context-aware tablet controller for your PC.",
+  "id": "desk-deck",
   "start_url": "/",
   "scope": "/",
   "display": "fullscreen",
-  "display_override": ["fullscreen", "standalone"],
+  "display_override": ["fullscreen", "standalone", "minimal-ui"],
   "orientation": "landscape",
   "background_color": "#0a0a0c",
   "theme_color": "#0a0a0c",
   "categories": ["productivity", "utilities"],
   "icons": [
-    { "src": "/runtime-static/icon.svg", "type": "image/svg+xml", "sizes": "any", "purpose": "any" },
-    { "src": "/runtime-static/icon-192.png", "type": "image/png", "sizes": "192x192", "purpose": "any maskable" },
-    { "src": "/runtime-static/icon-512.png", "type": "image/png", "sizes": "512x512", "purpose": "any maskable" }
+    { "src": "/runtime-static/icon-192.png", "type": "image/png", "sizes": "192x192", "purpose": "any" },
+    { "src": "/runtime-static/icon-512.png", "type": "image/png", "sizes": "512x512", "purpose": "any" },
+    { "src": "/runtime-static/icon-192.png", "type": "image/png", "sizes": "192x192", "purpose": "maskable" },
+    { "src": "/runtime-static/icon-512.png", "type": "image/png", "sizes": "512x512", "purpose": "maskable" },
+    { "src": "/runtime-static/icon.svg", "type": "image/svg+xml", "sizes": "any", "purpose": "any" }
   ]
 }

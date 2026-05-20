@@ -59,7 +59,7 @@ function renderLayout(layout, theme) {
   const ch = canvas.height || 1000;
 
   const vw = window.innerWidth;
-  const vh = window.innerHeight - 44;
+  const vh = window.innerHeight - 72;
   const scale = Math.min(vw / cw, vh / ch);
   stage.style.width  = `${cw}px`;
   stage.style.height = `${ch}px`;
