@@ -1,0 +1,78 @@
+name: Chrome
+match:
+  process: chrome.exe
+canvas:
+  width: 1600
+  height: 1000
+  theme: midnight
+widgets:
+  - id: title
+    type: label
+    x: 40
+    y: 24
+    w: 600
+    h: 20
+    props:
+      text: CHROME
+      align: left
+      size: 12
+
+  - id: newtab
+    type: button
+    x: 40
+    y: 64
+    w: 240
+    h: 140
+    props:
+      label: NEW TAB
+      action: { type: hotkey, keys: ctrl+t }
+
+  - id: close
+    type: button
+    x: 296
+    y: 64
+    w: 240
+    h: 140
+    props:
+      label: CLOSE TAB
+      action: { type: hotkey, keys: ctrl+w }
+
+  - id: reopen
+    type: button
+    x: 552
+    y: 64
+    w: 240
+    h: 140
+    props:
+      label: REOPEN
+      action: { type: hotkey, keys: ctrl+shift+t }
+
+  - id: devtools
+    type: button
+    x: 40
+    y: 220
+    w: 240
+    h: 140
+    props:
+      label: DEVTOOLS
+      action: { type: hotkey, keys: ctrl+shift+i }
+
+  - id: incognito
+    type: button
+    x: 296
+    y: 220
+    w: 240
+    h: 140
+    props:
+      label: INCOGNITO
+      action: { type: hotkey, keys: ctrl+shift+n }
+
+  - id: refresh
+    type: button
+    x: 552
+    y: 220
+    w: 240
+    h: 140
+    props:
+      label: HARD RELOAD
+      action: { type: hotkey, keys: ctrl+shift+r }

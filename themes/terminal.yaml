@@ -1,0 +1,17 @@
+name: terminal
+vars:
+  --bg:        "#000000"
+  --surface:   "#0a0f0a"
+  --surface-2: "#0f1a0f"
+  --surface-3: "#152115"
+  --border:    "#1e2f1e"
+  --border-hi: "#2e4a2e"
+  --text:      "#a8f5a8"
+  --text-dim:  "#5e9a5e"
+  --accent:    "#8eff8e"
+  --danger:    "#ff5e5e"
+  --font-ui:   "JetBrains Mono, ui-monospace, monospace"
+  --font-mono: "JetBrains Mono, ui-monospace, monospace"
+  --radius:    "0px"
+  --border-w:  "1px"
+  --gap:       "8px"

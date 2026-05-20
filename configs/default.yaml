@@ -1,0 +1,27 @@
+name: default
+canvas:
+  width: 1600
+  height: 1000
+  theme: midnight
+widgets:
+  - id: header
+    type: label
+    x: 40
+    y: 24
+    w: 600
+    h: 20
+    props:
+      text: DESK_DECK — IDLE
+      align: left
+      size: 12
+
+  - id: hint
+    type: label
+    x: 40
+    y: 56
+    w: 800
+    h: 40
+    props:
+      text: focus an app with a registered context to see its layout
+      align: left
+      size: 16

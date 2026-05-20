@@ -1,0 +1,78 @@
+name: VS Code
+match:
+  process: Code.exe
+canvas:
+  width: 1600
+  height: 1000
+  theme: midnight
+widgets:
+  - id: title
+    type: label
+    x: 40
+    y: 24
+    w: 600
+    h: 20
+    props:
+      text: VS CODE
+      align: left
+      size: 12
+
+  - id: cmdpalette
+    type: button
+    x: 40
+    y: 64
+    w: 240
+    h: 140
+    props:
+      label: COMMAND
+      action: { type: hotkey, keys: ctrl+shift+p }
+
+  - id: quickopen
+    type: button
+    x: 296
+    y: 64
+    w: 240
+    h: 140
+    props:
+      label: GO TO FILE
+      action: { type: hotkey, keys: ctrl+p }
+
+  - id: terminal
+    type: button
+    x: 552
+    y: 64
+    w: 240
+    h: 140
+    props:
+      label: TERMINAL
+      action: { type: hotkey, keys: ctrl+` }
+
+  - id: save
+    type: button
+    x: 40
+    y: 220
+    w: 240
+    h: 140
+    props:
+      label: SAVE
+      action: { type: hotkey, keys: ctrl+s }
+
+  - id: format
+    type: button
+    x: 296
+    y: 220
+    w: 240
+    h: 140
+    props:
+      label: FORMAT
+      action: { type: hotkey, keys: shift+alt+f }
+
+  - id: comment
+    type: button
+    x: 552
+    y: 220
+    w: 240
+    h: 140
+    props:
+      label: COMMENT
+      action: { type: hotkey, keys: ctrl+/ }

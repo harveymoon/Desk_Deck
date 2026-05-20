@@ -1,0 +1,308 @@
+/* Desk_Deck — runtime (tablet) styles. Square corners, dark, minimal palette. */
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0;
+  width: 100%; height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* ─── Title bar ─── */
+.dd-titlebar {
+  position: fixed; top: 0; left: 0; right: 0;
+  height: 44px; z-index: 20;
+  background: var(--surface);
+  border-bottom: var(--border-w) solid var(--border);
+  display: flex; align-items: stretch;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.dd-tb-menu {
+  appearance: none;
+  background: transparent;
+  border: none;
+  border-right: var(--border-w) solid var(--border);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  letter-spacing: 0.1em;
+  padding: 0 16px;
+  cursor: pointer;
+  transition: background 60ms linear, color 60ms linear;
+}
+.dd-tb-menu:hover, .dd-tb-menu:active { background: var(--surface-2); color: var(--text); }
+.dd-tb-context {
+  flex: 1; min-width: 0;
+  display: flex; align-items: center; gap: 16px;
+  padding: 0 16px;
+  overflow: hidden;
+}
+.dd-tb-name { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dd-tb-source { color: var(--text-dim); font-size: 10px; }
+.dd-tb-status {
+  display: flex; align-items: center; padding: 0 16px;
+  border-left: var(--border-w) solid var(--border);
+}
+.dd-tb-status.is-connected::before {
+  content: ''; display: inline-block; width: 8px; height: 8px;
+  background: var(--accent); margin-right: 8px;
+}
+.dd-tb-status.is-error { color: var(--danger); }
+.dd-tb-status.is-error::before { background: var(--danger); }
+
+/* ─── Stage ─── */
+.dd-stage {
+  position: absolute;
+  top: 44px; left: 0;
+  width: 100vw; height: calc(100vh - 44px);
+  transform-origin: top left;
+}
+
+/* ─── Widget base ─── */
+.dd-widget {
+  border: var(--border-w) solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: var(--radius);
+  font: inherit;
+  font-family: var(--font-ui);
+  position: absolute;
+}
+
+/* ─── Button ─── */
+.dd-button {
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  gap: 8px;
+  padding: 8px 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background 60ms linear, border-color 60ms linear, color 60ms linear;
+  outline: none;
+  -webkit-appearance: none;
+  text-align: center;
+}
+.dd-button:hover { background: var(--surface-2); }
+.dd-button.is-active,
+.dd-button:active {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+}
+.dd-button-icon { font-size: 1.2em; line-height: 1; }
+.dd-button-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+
+/* ─── Label ─── */
+.dd-label {
+  display: flex; align-items: center;
+  border: none; background: transparent;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 11px;
+  padding: 0 4px;
+}
+
+/* ─── Slider ─── */
+.dd-slider {
+  display: flex;
+  align-items: stretch;
+  padding: 8px;
+  gap: 8px;
+  cursor: pointer;
+  touch-action: none;
+}
+.dd-slider.is-horizontal { flex-direction: row; }
+.dd-slider.is-vertical { flex-direction: column-reverse; }
+.dd-slider-track {
+  flex: 1;
+  position: relative;
+  background: var(--surface-2);
+  border: var(--border-w) solid var(--border);
+}
+.dd-slider-fill {
+  position: absolute;
+  background: var(--accent);
+}
+.dd-slider.is-horizontal .dd-slider-fill { left: 0; top: 0; bottom: 0; }
+.dd-slider.is-vertical .dd-slider-fill { left: 0; right: 0; bottom: 0; }
+.dd-slider-meta {
+  display: flex; flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  min-width: 36px;
+}
+.dd-slider-value { color: var(--text); font-size: 14px; }
+.dd-slider-label { color: var(--text-dim); }
+
+/* ─── Textbox ─── */
+.dd-textbox {
+  padding: 8px 12px;
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-dim);
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.dd-textbox.is-mono { font-family: var(--font-mono); }
+
+/* ─── Input (editable textbox) ─── */
+.dd-input {
+  display: flex; align-items: center;
+  padding: 0;
+}
+.dd-input input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  padding: 8px 12px;
+}
+.dd-input button {
+  background: var(--surface-2);
+  border: none;
+  border-left: var(--border-w) solid var(--border);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0 16px;
+  cursor: pointer;
+}
+
+/* ─── Rotary dial ─── */
+.dd-rotary {
+  padding: 12px;
+  display: flex; align-items: center; justify-content: center;
+  position: relative;
+  touch-action: none;
+  cursor: pointer;
+}
+.dd-rotary-svg { width: 100%; height: 100%; }
+.dd-rotary-ring { fill: none; stroke: var(--surface-2); }
+.dd-rotary-arc { fill: none; stroke: var(--accent); }
+.dd-rotary-needle { stroke: var(--text); stroke-linecap: square; }
+.dd-rotary-label {
+  position: absolute; left: 0; right: 0; bottom: 8px;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.dd-rotary-value {
+  position: absolute; left: 0; right: 0; top: 50%;
+  transform: translateY(-50%);
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 18px;
+  color: var(--text);
+}
+
+/* ─── Overlay (Apps / Spaces / Bookmarks) ─── */
+.dd-overlay {
+  position: fixed;
+  top: 44px; left: 0; right: 0; bottom: 0;
+  z-index: 30;
+  background: var(--bg);
+  border-top: var(--border-w) solid var(--border);
+  display: flex;
+  flex-direction: column;
+}
+.dd-overlay[hidden] { display: none; }
+.dd-overlay-head {
+  display: flex; align-items: center;
+  height: 40px;
+  padding: 0 16px;
+  border-bottom: var(--border-w) solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.dd-overlay-head span { flex: 1; }
+.dd-overlay-close {
+  appearance: none;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 22px;
+  cursor: pointer;
+  padding: 0 8px;
+}
+.dd-overlay-body {
+  flex: 1;
+  overflow: auto;
+  padding: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+  align-content: start;
+}
+.dd-tile {
+  background: var(--surface);
+  border: var(--border-w) solid var(--border);
+  color: var(--text);
+  padding: 12px 14px;
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  display: flex; flex-direction: column;
+  gap: 4px;
+  min-height: 80px;
+  transition: background 60ms linear, border-color 60ms linear, color 60ms linear;
+}
+.dd-tile:hover, .dd-tile:active { background: var(--surface-2); border-color: var(--border-hi); }
+.dd-tile.is-current { border-color: var(--accent); color: var(--text); }
+.dd-tile-title {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.dd-tile-meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-top: auto;
+}
+.dd-overlay-body.is-bookmarks {
+  display: block;
+  position: relative;
+  padding: 16px;
+}
+.dd-overlay-body.is-bookmarks .dd-stage-mini {
+  position: relative;
+  transform-origin: top left;
+}

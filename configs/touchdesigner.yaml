@@ -1,0 +1,78 @@
+name: TouchDesigner
+match:
+  process: TouchDesigner.exe
+canvas:
+  width: 1600
+  height: 1000
+  theme: midnight
+widgets:
+  - id: title
+    type: label
+    x: 40
+    y: 24
+    w: 600
+    h: 20
+    props:
+      text: TOUCHDESIGNER
+      align: left
+      size: 12
+
+  - id: save
+    type: button
+    x: 40
+    y: 64
+    w: 240
+    h: 140
+    props:
+      label: SAVE
+      action: { type: hotkey, keys: ctrl+s }
+
+  - id: play
+    type: button
+    x: 296
+    y: 64
+    w: 240
+    h: 140
+    props:
+      label: PLAY
+      action: { type: hotkey, keys: F1 }
+
+  - id: pause
+    type: button
+    x: 552
+    y: 64
+    w: 240
+    h: 140
+    props:
+      label: PAUSE
+      action: { type: hotkey, keys: F2 }
+
+  - id: perform
+    type: button
+    x: 40
+    y: 220
+    w: 240
+    h: 140
+    props:
+      label: PERFORM
+      action: { type: hotkey, keys: F11 }
+
+  - id: snippet
+    type: button
+    x: 296
+    y: 220
+    w: 240
+    h: 140
+    props:
+      label: SNIPPETS
+      action: { type: hotkey, keys: ctrl+shift+s }
+
+  - id: textport
+    type: button
+    x: 552
+    y: 220
+    w: 240
+    h: 140
+    props:
+      label: TEXTPORT
+      action: { type: hotkey, keys: alt+t }

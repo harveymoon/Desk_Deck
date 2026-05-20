@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Desk Deck · Editor</title>
+<link rel="icon" href="/runtime-static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/editor-static/editor.css">
+</head>
+<body>
+  <header class="dd-ed-bar">
+    <div class="dd-ed-brand">DESK_DECK · EDITOR</div>
+    <div class="dd-ed-config">
+      <label>Config:</label>
+      <select id="config-select"></select>
+      <button id="config-new">+ New</button>
+      <button id="config-delete" class="danger">Delete</button>
+    </div>
+    <div class="dd-ed-actions">
+      <label>Theme:
+        <select id="theme-select"></select>
+      </label>
+      <label>Snap:
+        <select id="snap-select">
+          <option value="0">none</option>
+          <option value="8">8</option>
+          <option value="16" selected>16</option>
+          <option value="32">32</option>
+        </select>
+      </label>
+      <button id="preview-btn">Preview on tablet</button>
+      <button id="save-btn" class="primary">Save</button>
+    </div>
+  </header>
+
+  <main class="dd-ed-main">
+    <aside class="dd-ed-palette">
+      <h3>Palette</h3>
+      <div class="dd-ed-paltools">
+        <div class="dd-ed-tool" data-type="button">Button</div>
+        <div class="dd-ed-tool" data-type="slider">Slider</div>
+        <div class="dd-ed-tool" data-type="textbox">Textbox</div>
+        <div class="dd-ed-tool" data-type="label">Label</div>
+        <div class="dd-ed-tool" data-type="input">Input</div>
+        <div class="dd-ed-tool" data-type="rotary">Rotary</div>
+      </div>
+      <h3>Match rule</h3>
+      <div class="dd-ed-match">
+        <label>Process<input id="match-process" placeholder="notepad.exe"></label>
+        <label>Title regex<input id="match-title" placeholder="(optional)"></label>
+        <label>Class<input id="match-class" placeholder="(optional)"></label>
+      </div>
+      <h3>Canvas</h3>
+      <div class="dd-ed-canvas-opts">
+        <label>W<input id="canvas-w" type="number" value="1600" min="200" max="4000"></label>
+        <label>H<input id="canvas-h" type="number" value="1000" min="200" max="3000"></label>
+      </div>
+    </aside>
+
+    <section class="dd-ed-canvas-wrap">
+      <div id="canvas-scroll" class="dd-ed-scroll">
+        <div id="canvas" class="dd-ed-canvas"></div>
+      </div>
+    </section>
+
+    <aside class="dd-ed-inspector">
+      <h3>Inspector</h3>
+      <div id="inspector" class="dd-ed-form">
+        <em>Select a widget to edit its properties.</em>
+      </div>
+    </aside>
+  </main>
+
+  <div id="toast" class="dd-ed-toast" hidden></div>
+
+  <script type="module" src="/editor-static/editor.js"></script>
+</body>
+</html>

@@ -1,0 +1,78 @@
+name: Notepad
+match:
+  process: notepad.exe
+canvas:
+  width: 1600
+  height: 1000
+  theme: midnight
+widgets:
+  - id: title
+    type: label
+    x: 40
+    y: 24
+    w: 600
+    h: 20
+    props:
+      text: NOTEPAD
+      align: left
+      size: 12
+
+  - id: save
+    type: button
+    x: 40
+    y: 64
+    w: 240
+    h: 140
+    props:
+      label: SAVE
+      action: { type: hotkey, keys: ctrl+s }
+
+  - id: open
+    type: button
+    x: 296
+    y: 64
+    w: 240
+    h: 140
+    props:
+      label: OPEN
+      action: { type: hotkey, keys: ctrl+o }
+
+  - id: find
+    type: button
+    x: 552
+    y: 64
+    w: 240
+    h: 140
+    props:
+      label: FIND
+      action: { type: hotkey, keys: ctrl+f }
+
+  - id: undo
+    type: button
+    x: 40
+    y: 220
+    w: 240
+    h: 140
+    props:
+      label: UNDO
+      action: { type: hotkey, keys: ctrl+z }
+
+  - id: redo
+    type: button
+    x: 296
+    y: 220
+    w: 240
+    h: 140
+    props:
+      label: REDO
+      action: { type: hotkey, keys: ctrl+y }
+
+  - id: selectall
+    type: button
+    x: 552
+    y: 220
+    w: 240
+    h: 140
+    props:
+      label: SELECT ALL
+      action: { type: hotkey, keys: ctrl+a }
