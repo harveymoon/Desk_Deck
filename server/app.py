@@ -23,7 +23,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import actions, auth, config, desktops, dynamic, registry, themes, watcher
+from . import actions, auth, chrome, config, desktops, dynamic, registry, themes, watcher
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
@@ -441,6 +441,29 @@ def list_windows(request: Request) -> JSONResponse:
     """All visible top-level windows across all processes (for the Apps overlay)."""
     auth.require_token(request)
     return JSONResponse(dynamic.enum_all_visible_windows())
+
+
+@app.get("/api/chrome/tabs")
+def list_chrome_tabs(request: Request) -> JSONResponse:
+    """List Chrome tabs via DevTools Protocol. Empty if --remote-debugging-port=9222
+    isn't enabled. Use start_chrome_debug.bat to launch Chrome with the flag."""
+    auth.require_token(request)
+    return JSONResponse({"available": chrome.available(), "tabs": chrome.list_tabs()})
+
+
+@app.post("/api/chrome/activate/{tab_id}")
+def activate_chrome_tab(tab_id: str, request: Request) -> JSONResponse:
+    """Activate a Chrome tab AND bring its Chrome window to the OS foreground."""
+    auth.require_token(request)
+    # Pull title before activating — we use it to find the right Chrome window after.
+    tabs = chrome.list_tabs()
+    tab = next((t for t in tabs if t.get("id") == tab_id), None)
+    ok = chrome.activate_tab(tab_id)
+    if ok and tab:
+        hwnd = chrome.find_window_for_tab(tab.get("title") or "")
+        if hwnd:
+            actions.dispatch({"type": "focus_window", "hwnd": hwnd})
+    return JSONResponse({"ok": ok})
 
 
 @app.get("/api/desktops")

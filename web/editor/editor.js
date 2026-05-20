@@ -167,8 +167,21 @@ function renderInspector() {
     inp.value = getPath(w, key) ?? 0;
     if (opts.min != null) inp.min = opts.min;
     if (opts.step != null) inp.step = opts.step;
-    inp.addEventListener("input", () => { setPath(w, key, Number(inp.value)); refresh(); });
+    if (opts.bind) inp.dataset.bind = opts.bind;
+    inp.addEventListener("input", () => {
+      setPath(w, key, Number(inp.value));
+      // For position/size, mutate the live DOM directly so we don't lose focus.
+      if (key === "x") liveSet("left", w.x + "px");
+      else if (key === "y") liveSet("top", w.y + "px");
+      else if (key === "w") liveSet("width", w.w + "px");
+      else if (key === "h") liveSet("height", w.h + "px");
+      else refresh();
+    });
     return row(label, inp);
+  }
+  function liveSet(prop, value) {
+    const el = els.canvas.querySelector(`.dd-widget[data-widget-id="${selectedId}"]`);
+    if (el) el.style[prop] = value;
   }
   function text(label, key) {
     const inp = document.createElement("input");
@@ -197,10 +210,10 @@ function renderInspector() {
   }
 
   text("ID", "id");
-  num("X", "x", { min: 0 });
-  num("Y", "y", { min: 0 });
-  num("W", "w", { min: 10 });
-  num("H", "h", { min: 10 });
+  num("X", "x", { min: 0, bind: "x" });
+  num("Y", "y", { min: 0, bind: "y" });
+  num("W", "w", { min: 10, bind: "w" });
+  num("H", "h", { min: 10, bind: "h" });
 
   if (w.type === "button") {
     text("Label", "props.label");
@@ -286,41 +299,69 @@ function attachWidgetHandlers(el, w) {
   el.addEventListener("pointerdown", (e) => {
     if (e.target.closest("input, select, textarea")) return;
     e.preventDefault();
-    selectedId = w.id;
-    refresh();
+    // Update selection state WITHOUT rebuilding the canvas — otherwise the
+    // `el` reference is detached and the drag updates a dead node.
+    selectWidget(w.id);
+
+    const scale = canvasScale();
     const startX = e.clientX;
     const startY = e.clientY;
     const origX = w.x;
     const origY = w.y;
     const snap = Number(els.snapSelect.value) || 0;
+    let moved = false;
+
     function move(ev) {
-      const dx = ev.clientX - startX;
-      const dy = ev.clientY - startY;
+      const dx = (ev.clientX - startX) / scale;
+      const dy = (ev.clientY - startY) / scale;
       let nx = origX + dx;
       let ny = origY + dy;
       if (snap > 0) {
         nx = Math.round(nx / snap) * snap;
         ny = Math.round(ny / snap) * snap;
       }
-      w.x = Math.max(0, nx);
-      w.y = Math.max(0, ny);
+      w.x = Math.max(0, Math.round(nx));
+      w.y = Math.max(0, Math.round(ny));
       el.style.left = w.x + "px";
       el.style.top  = w.y + "px";
+      if (!moved && (Math.abs(dx) > 1 || Math.abs(dy) > 1)) {
+        moved = true;
+        el.classList.add("is-dragging");
+      }
+      // Live-update inspector x/y fields (look them up cheaply)
+      const xInput = els.inspector.querySelector('label input[data-bind="x"]');
+      const yInput = els.inspector.querySelector('label input[data-bind="y"]');
+      if (xInput) xInput.value = w.x;
+      if (yInput) yInput.value = w.y;
     }
     function up() {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
-      renderInspector();
+      el.classList.remove("is-dragging");
     }
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
   });
 }
 
-els.canvas.addEventListener("click", (e) => {
+function canvasScale() {
+  // The editor canvas is not scaled in the current layout, but if we ever
+  // add zoom this is the hook. Returns 1 for now.
+  return 1;
+}
+
+function selectWidget(id) {
+  selectedId = id;
+  // Update only selection class on existing elements (no full rebuild)
+  for (const el of els.canvas.querySelectorAll(".dd-widget")) {
+    el.classList.toggle("is-selected", el.dataset.widgetId === id);
+  }
+  renderInspector();
+}
+
+els.canvas.addEventListener("pointerdown", (e) => {
   if (e.target === els.canvas) {
-    selectedId = null;
-    refresh();
+    selectWidget(null);
   }
 });
 

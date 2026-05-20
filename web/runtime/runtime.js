@@ -150,15 +150,53 @@ function closeOverlay() {
 }
 
 async function fetchApps() {
-  try {
-    const r = await fetch("/api/windows?t=" + encodeURIComponent(token));
-    if (!r.ok) throw new Error("api/windows " + r.status);
-    const wins = await r.json();
-    overlayBody.innerHTML = "";
-    if (!wins.length) {
-      overlayBody.innerHTML = "<div class='dd-tile'>no visible windows</div>";
-      return;
+  overlayBody.innerHTML = "";
+  // Fetch tabs and windows in parallel
+  const [tabsResp, winsResp] = await Promise.allSettled([
+    fetch("/api/chrome/tabs?t=" + encodeURIComponent(token)).then(r => r.json()),
+    fetch("/api/windows?t=" + encodeURIComponent(token)).then(r => r.json()),
+  ]);
+
+  // Tabs section (only if CDP is available and there are tabs)
+  if (tabsResp.status === "fulfilled" && tabsResp.value.available && tabsResp.value.tabs.length) {
+    const section = document.createElement("div");
+    section.className = "dd-section-head";
+    section.textContent = `Chrome tabs · ${tabsResp.value.tabs.length}`;
+    overlayBody.appendChild(section);
+    for (const tab of tabsResp.value.tabs) {
+      const tile = document.createElement("button");
+      tile.className = "dd-tile dd-tile-tab";
+      const t = document.createElement("div");
+      t.className = "dd-tile-title";
+      t.textContent = tab.title;
+      tile.appendChild(t);
+      const m = document.createElement("div");
+      m.className = "dd-tile-meta";
+      try { m.textContent = new URL(tab.url).host || tab.url; }
+      catch { m.textContent = tab.url; }
+      tile.appendChild(m);
+      tile.addEventListener("click", async () => {
+        await fetch(`/api/chrome/activate/${encodeURIComponent(tab.id)}?t=${encodeURIComponent(token)}`, { method: "POST" });
+        closeOverlay();
+      });
+      overlayBody.appendChild(tile);
     }
+  }
+
+  // Windows section
+  if (winsResp.status !== "fulfilled") {
+    const err = document.createElement("div");
+    err.className = "dd-tile";
+    err.textContent = "failed to load windows";
+    overlayBody.appendChild(err);
+    return;
+  }
+  const wins = winsResp.value;
+  if (wins.length) {
+    const section = document.createElement("div");
+    section.className = "dd-section-head";
+    section.textContent = `Windows · ${wins.length}`;
+    overlayBody.appendChild(section);
     for (const w of wins) {
       const tile = document.createElement("button");
       tile.className = "dd-tile";
@@ -176,8 +214,17 @@ async function fetchApps() {
       });
       overlayBody.appendChild(tile);
     }
-  } catch (e) {
-    overlayBody.innerHTML = `<div class='dd-tile'>failed: ${e}</div>`;
+  } else if (!overlayBody.children.length) {
+    overlayBody.innerHTML = "<div class='dd-tile'>no visible windows</div>";
+  }
+
+  // Tabs-not-available hint, only if Chrome is in the windows list
+  if (tabsResp.status === "fulfilled" && !tabsResp.value.available &&
+      wins.some(w => (w.process || "").toLowerCase() === "chrome.exe")) {
+    const hint = document.createElement("div");
+    hint.className = "dd-tile dd-tile-hint";
+    hint.innerHTML = "Chrome tabs hidden — relaunch Chrome via <code>start_chrome_debug.bat</code> to enable tab listing.";
+    overlayBody.appendChild(hint);
   }
 }
 

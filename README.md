@@ -163,11 +163,25 @@ The top of the tablet shows the current context and three menu buttons:
 
 | Button | Overlay | Backed by                                              |
 |--------|---------|---------------------------------------------------------|
-| **▦**  | Apps    | `/api/windows` — every visible top-level window         |
+| **▦**  | Apps    | `/api/windows` — every visible top-level window. Also lists **Chrome tabs** if Chrome is running with DevTools Protocol on port 9222 (use `start_chrome_debug.bat`). |
 | **▢▢** | Spaces  | `/api/desktops` — Windows virtual desktops via [pyvda]  |
 | **★**  | Bookmarks | `configs/bookmarks.yaml` — pinned cross-context macros |
 
 [pyvda]: https://github.com/mrob95/pyvda
+
+### Chrome tab listing
+
+To list Chrome tabs in the Apps overlay (not just Chrome windows), Chrome
+needs to be launched with `--remote-debugging-port=9222`. Two options:
+
+1. **Quick**: close all Chrome windows, then run `start_chrome_debug.bat`.
+   Reopens Chrome with the debug port enabled and your existing profile.
+2. **Permanent**: edit your Chrome shortcut and add
+   `--remote-debugging-port=9222` to the Target.
+
+When the port is open, the Apps overlay shows a "Chrome tabs" section
+with every open tab; tapping switches to that tab and brings its Chrome
+window to the front.
 
 ---
 
@@ -478,6 +492,8 @@ the query-string form.
 | GET    | `/api/bookmarks`           | token     | Bookmarks config                     |
 | POST   | `/api/bookmarks/run`       | token     | Dispatch a bookmark action           |
 | POST   | `/api/action`              | token     | Dispatch any action                  |
+| GET    | `/api/chrome/tabs`         | token     | Chrome tabs via DevTools (CDP)       |
+| POST   | `/api/chrome/activate/{id}`| token     | Switch to a Chrome tab               |
 | POST   | `/widget/{id}`             | token     | Push text into a textbox             |
 | WS     | `/live?t=<token>`          | token     | Runtime + editor channel             |
 
@@ -537,6 +553,7 @@ Desk_Deck/
     dynamic.py         # window enumeration + synthetic fallback
     themes.py          # theme loader + hot-reload
     desktops.py        # virtual desktop helpers (pyvda)
+    chrome.py          # Chrome DevTools Protocol client (tabs)
     registry.py        # provider discovery
     providers/
       __init__.py
@@ -576,6 +593,7 @@ Desk_Deck/
   run.bat
   install_autostart.bat
   uninstall_autostart.bat
+  start_chrome_debug.bat
   README.md
 ```
 
