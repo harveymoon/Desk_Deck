@@ -143,12 +143,15 @@ class Hub:
             if not wid or not source:
                 continue
 
-            # emit() is called from the provider's thread; bridge to asyncio
+            # emit() is called from the provider's thread; bridge to asyncio.
+            # Providers may call emit(text) to append, or emit(text, replace=True)
+            # to replace the whole textbox content.
             def make_emit(captured_wid: str):
-                def emit(text: str) -> None:
+                def emit(text: str, replace: bool = False) -> None:
                     if _loop is not None:
+                        patch = {"replace": text} if replace else {"append": text}
                         asyncio.run_coroutine_threadsafe(
-                            self.push_widget_update(captured_wid, {"append": text}),
+                            self.push_widget_update(captured_wid, patch),
                             _loop,
                         )
                 return emit

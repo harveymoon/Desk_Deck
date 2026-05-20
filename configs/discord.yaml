@@ -1,0 +1,157 @@
+name: Discord
+match:
+  process: Discord.exe
+canvas:
+  width: 1600
+  height: 1000
+  theme: midnight
+widgets:
+  - id: title
+    type: label
+    x: 40
+    y: 24
+    w: 800
+    h: 20
+    props:
+      text: DISCORD
+      align: left
+      size: 12
+
+  # ─── Quick actions row ───
+  - id: quick_switcher
+    type: button
+    x: 40
+    y: 64
+    w: 240
+    h: 120
+    props:
+      label: QUICK SWITCH
+      action: { type: hotkey, keys: ctrl+k }
+
+  - id: mark_read
+    type: button
+    x: 296
+    y: 64
+    w: 240
+    h: 120
+    props:
+      label: MARK READ
+      action: { type: hotkey, keys: escape }
+
+  - id: mute_mic
+    type: button
+    x: 552
+    y: 64
+    w: 240
+    h: 120
+    props:
+      label: MUTE MIC
+      action: { type: hotkey, keys: ctrl+shift+m }
+
+  - id: deafen
+    type: button
+    x: 808
+    y: 64
+    w: 240
+    h: 120
+    props:
+      label: DEAFEN
+      action: { type: hotkey, keys: ctrl+shift+d }
+
+  - id: nav_up
+    type: button
+    x: 1064
+    y: 64
+    w: 240
+    h: 120
+    props:
+      label: PREV UNREAD
+      action: { type: hotkey, keys: shift+alt+up }
+
+  - id: nav_down
+    type: button
+    x: 1320
+    y: 64
+    w: 240
+    h: 120
+    props:
+      label: NEXT UNREAD
+      action: { type: hotkey, keys: shift+alt+down }
+
+  # ─── Live status fed by the discord provider ───
+  - id: status_label
+    type: label
+    x: 40
+    y: 208
+    w: 800
+    h: 20
+    props:
+      text: STATUS
+      align: left
+      size: 12
+
+  - id: status
+    type: textbox
+    x: 40
+    y: 240
+    w: 760
+    h: 320
+    props:
+      monospace: true
+      max_lines: 50
+      source: discord
+
+  # ─── Windows / channels switcher ───
+  - id: windows_label
+    type: label
+    x: 832
+    y: 208
+    w: 800
+    h: 20
+    props:
+      text: WINDOWS
+      align: left
+      size: 12
+
+  - id: discord_windows
+    type: window_list
+    x: 832
+    y: 240
+    w: 728
+    h: 320
+    props:
+      source: process_windows
+      columns: 1
+      button_height: 90
+      gap: 12
+
+  # ─── Bottom row: more hotkeys ───
+  - id: pin_message
+    type: button
+    x: 40
+    y: 600
+    w: 240
+    h: 120
+    props:
+      label: PINS
+      action: { type: hotkey, keys: ctrl+p }
+
+  - id: search
+    type: button
+    x: 296
+    y: 600
+    w: 240
+    h: 120
+    props:
+      label: SEARCH
+      action: { type: hotkey, keys: ctrl+f }
+
+  - id: shortcuts
+    type: button
+    x: 552
+    y: 600
+    w: 240
+    h: 120
+    props:
+      label: SHORTCUTS
+      action: { type: hotkey, keys: "ctrl+/" }
