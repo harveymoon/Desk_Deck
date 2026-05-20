@@ -8,7 +8,7 @@ import sys
 import qrcode
 import uvicorn
 
-from . import auth
+from . import auth, log_buffer
 
 # Force UTF-8 stdout so the QR's block glyphs render on Windows cp1252 terminals.
 try:
@@ -16,6 +16,10 @@ try:
     sys.stderr.reconfigure(encoding="utf-8")
 except Exception:
     pass
+
+# Mirror stdout/stderr into the in-memory log buffer so the editor's Logs tab
+# can tail them over SSE. Must run before uvicorn's StreamHandlers attach.
+log_buffer.install()
 
 
 def _lan_ip() -> str:

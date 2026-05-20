@@ -1,65 +1,75 @@
 name: bookmarks
+match: {}
 canvas:
   width: 1600
   height: 1000
-  theme: midnight
+  theme: graphite
 widgets:
-  - id: bm_calculator
-    type: button
-    x: 40
-    y: 40
-    w: 240
-    h: 120
-    props:
-      label: CALCULATOR
-      action: { type: command, cmd: ["calc.exe"] }
-
-  - id: bm_notepad
-    type: button
-    x: 296
-    y: 40
-    w: 240
-    h: 120
-    props:
-      label: NOTEPAD
-      action: { type: command, cmd: ["notepad.exe"] }
-
-  - id: bm_explorer
-    type: button
-    x: 552
-    y: 40
-    w: 240
-    h: 120
-    props:
-      label: EXPLORER
-      action: { type: command, cmd: ["explorer.exe"] }
-
-  - id: bm_taskmgr
-    type: button
-    x: 808
-    y: 40
-    w: 240
-    h: 120
-    props:
-      label: TASK MGR
-      action: { type: hotkey, keys: ctrl+shift+escape }
-
-  - id: bm_screenshot
-    type: button
-    x: 40
-    y: 180
-    w: 240
-    h: 120
-    props:
-      label: SNIP
-      action: { type: hotkey, keys: win+shift+s }
-
-  - id: bm_lock
-    type: button
-    x: 296
-    y: 180
-    w: 240
-    h: 120
-    props:
-      label: LOCK PC
-      action: { type: hotkey, keys: win+l }
+- id: bm_calculator
+  type: button
+  x: 64
+  y: 64
+  w: 240
+  h: 120
+  props:
+    label: CALCULATOR
+    action:
+      type: command
+      cmd:
+      - calc.exe
+- id: bm_VNC
+  type: button
+  x: 64
+  y: 224
+  w: 240
+  h: 120
+  props:
+    label: VNC
+    action:
+      type: command
+      cmd: C:\CODE\cool-vnc\release\cool-vnc-win32-x64\cool-vnc.exe
+- id: bm_explorer
+  type: button
+  x: 352
+  y: 64
+  w: 240
+  h: 120
+  props:
+    label: EXPLORER
+    action:
+      type: command
+      cmd:
+      - explorer.exe
+- id: bm_taskmgr
+  type: button
+  x: 640
+  y: 64
+  w: 240
+  h: 120
+  props:
+    label: TASK MGR
+    action:
+      type: hotkey
+      keys: ctrl+shift+escape
+- id: bm_screenshot
+  type: button
+  x: 352
+  y: 224
+  w: 240
+  h: 120
+  props:
+    label: SNIP
+    action:
+      type: hotkey
+      keys: win+shift+s
+- id: bm_lock
+  type: button
+  x: 640
+  y: 224
+  w: 240
+  h: 120
+  props:
+    label: LOCK PC
+    action:
+      type: hotkey
+      keys: win+l

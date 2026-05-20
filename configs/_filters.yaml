@@ -1,10 +1,11 @@
 hide_processes:
+- nanoclaw-overlay.exe
 - NVIDIA Overlay.exe
 - NVIDIA Share.exe
-- TextInputHost.exe
 - SearchHost.exe
-- StartMenuExperienceHost.exe
 - ShellExperienceHost.exe
+- StartMenuExperienceHost.exe
+- TextInputHost.exe
 hide_classes:
 - Progman
 - Shell_TrayWnd

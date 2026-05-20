@@ -23,7 +23,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import actions, auth, chrome, config, desktops, dynamic, filters, registry, themes, watcher
+from . import actions, auth, chrome, config, desktops, dynamic, filters, log_buffer, registry, themes, watcher
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
@@ -504,6 +504,50 @@ def list_processes(request: Request) -> JSONResponse:
     Used by the editor's Hidden Apps modal."""
     auth.require_token(request)
     return JSONResponse(dynamic.enum_distinct_processes(include_hidden=True))
+
+
+@app.get("/api/logs")
+def get_logs(request: Request) -> JSONResponse:
+    """Snapshot of recent log lines (in-memory ring buffer)."""
+    auth.require_token(request)
+    return JSONResponse(log_buffer.snapshot())
+
+
+@app.get("/api/logs/stream")
+async def stream_logs(request: Request):
+    """Server-Sent Events stream of log lines: snapshot first, then live."""
+    from fastapi.responses import StreamingResponse
+    auth.require_token(request)
+    loop = asyncio.get_running_loop()
+    q: asyncio.Queue = asyncio.Queue(maxsize=2000)
+
+    async def gen():
+        try:
+            # Initial snapshot so the user sees recent history immediately.
+            for entry in log_buffer.snapshot():
+                yield f"data: {json.dumps(entry)}\n\n"
+            log_buffer.add_listener(loop, q)
+            # Live updates, with periodic keepalive so proxies don't drop us.
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    entry = await asyncio.wait_for(q.get(), timeout=20.0)
+                    yield f"data: {json.dumps(entry)}\n\n"
+                except asyncio.TimeoutError:
+                    yield ": keepalive\n\n"
+        finally:
+            log_buffer.remove_listener(q)
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 @app.get("/api/filters")

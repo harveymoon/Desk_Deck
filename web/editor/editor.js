@@ -662,7 +662,134 @@ function toast(text, isErr) {
   toast._t = setTimeout(() => { els.toast.hidden = true; }, 1800);
 }
 
+// ───────── Logs tab ─────────
+const logsEls = {
+  status: document.getElementById("logs-status"),
+  filter: document.getElementById("logs-filter"),
+  autoscroll: document.getElementById("logs-autoscroll"),
+  clear: document.getElementById("logs-clear"),
+  scroll: document.getElementById("logs-scroll"),
+  body: document.getElementById("logs"),
+  badge: document.getElementById("logs-badge"),
+};
+let _logSrc = null;
+let _logFilterText = "";
+let _logUnseen = 0;
+
+function setLogStatus(text, cls) {
+  logsEls.status.textContent = text;
+  logsEls.status.className = "dd-ed-logs-status" + (cls ? " " + cls : "");
+}
+
+function escapeLogHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function appendLogEntry(entry) {
+  const div = document.createElement("div");
+  div.className = "dd-log-line" + (entry.stream === "err" ? " is-err" : "");
+
+  const tagMatch = (entry.line || "").match(/^\[([\w-]+)\]\s*(.*)$/);
+  if (tagMatch) {
+    div.dataset.tag = tagMatch[1];
+    div.innerHTML =
+      `<span class="dd-log-ts">${entry.ts}</span>` +
+      `<span class="dd-log-body"><span class="dd-log-tag">[${tagMatch[1]}]</span> ${escapeLogHtml(tagMatch[2])}</span>`;
+  } else {
+    div.innerHTML =
+      `<span class="dd-log-ts">${entry.ts}</span>` +
+      `<span class="dd-log-body">${escapeLogHtml(entry.line)}</span>`;
+  }
+
+  // Apply current filter
+  if (_logFilterText && !(entry.line || "").toLowerCase().includes(_logFilterText)) {
+    div.classList.add("is-filtered");
+  }
+
+  logsEls.body.appendChild(div);
+  while (logsEls.body.children.length > 1000) {
+    logsEls.body.removeChild(logsEls.body.firstChild);
+  }
+  if (logsEls.autoscroll.checked) {
+    logsEls.scroll.scrollTop = logsEls.scroll.scrollHeight;
+  }
+
+  // Badge only when something looks interesting and Logs tab isn't active.
+  // Skip routine uvicorn INFO / [ctx] / [config] chatter.
+  const text = entry.line || "";
+  const isInteresting =
+    /\b(error|traceback|exception|failed|unhandled)\b/i.test(text) ||
+    (entry.stream === "err" && !text.startsWith("INFO:"));
+  const logsTabActive = document.querySelector(".dd-ed-tab.is-active[data-tab='logs']");
+  if (isInteresting && !logsTabActive) {
+    _logUnseen++;
+    logsEls.badge.hidden = false;
+  }
+}
+
+function startLogStream() {
+  if (_logSrc) return;
+  setLogStatus("connecting…");
+  _logSrc = new EventSource(`/api/logs/stream${qs}`);
+  _logSrc.onopen = () => setLogStatus("connected", "is-connected");
+  _logSrc.onmessage = (e) => {
+    try { appendLogEntry(JSON.parse(e.data)); }
+    catch {}
+  };
+  _logSrc.onerror = () => {
+    setLogStatus("reconnecting…", "is-error");
+    // EventSource auto-reconnects on transient errors. If it goes CLOSED, restart it.
+    if (_logSrc && _logSrc.readyState === 2) {
+      _logSrc.close();
+      _logSrc = null;
+      setTimeout(startLogStream, 1500);
+    }
+  };
+}
+
+function stopLogStream() {
+  if (_logSrc) { _logSrc.close(); _logSrc = null; }
+  setLogStatus("disconnected");
+}
+
+logsEls.filter.addEventListener("input", () => {
+  _logFilterText = logsEls.filter.value.trim().toLowerCase();
+  for (const div of logsEls.body.children) {
+    const txt = (div.textContent || "").toLowerCase();
+    div.classList.toggle("is-filtered", !!_logFilterText && !txt.includes(_logFilterText));
+  }
+});
+
+logsEls.clear.addEventListener("click", () => { logsEls.body.innerHTML = ""; });
+
+// ───────── tab switching ─────────
+document.querySelectorAll(".dd-ed-tab").forEach((t) => {
+  t.addEventListener("click", () => switchTab(t.dataset.tab));
+});
+
+function switchTab(name) {
+  document.querySelectorAll(".dd-ed-tab").forEach((t) => {
+    t.classList.toggle("is-active", t.dataset.tab === name);
+  });
+  document.querySelectorAll("[data-pane]").forEach((p) => {
+    p.hidden = p.dataset.pane !== name;
+  });
+  if (name === "logs") {
+    _logUnseen = 0;
+    logsEls.badge.hidden = true;
+    startLogStream();
+  } else {
+    // Keep the stream alive so the badge counts unseen lines — no stopLogStream() here.
+    // Comment out the next line if you'd rather pause the SSE when not viewing logs.
+    // stopLogStream();
+  }
+}
+
 // ───────── init ─────────
 await loadConfigsList();
 await loadThemesList();
 refresh();
+
+// Start the log stream in the background so the badge can flag new errors
+// even while you're editing the canvas.
+startLogStream();

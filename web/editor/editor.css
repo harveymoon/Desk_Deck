@@ -140,14 +140,53 @@ button.danger:hover { background: var(--danger); color: var(--bg); border-color:
   flex: 0 0 130px;
 }
 
-/* Canvas */
+/* Canvas + tab system */
 .dd-ed-canvas-wrap {
   background: var(--bg);
   overflow: hidden;
   position: relative;
+  display: flex;
+  flex-direction: column;
+}
+.dd-ed-tabs {
+  display: flex;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  height: 36px;
+  flex: 0 0 36px;
+}
+.dd-ed-tab {
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--border);
+  border-radius: 0;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 0 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+}
+.dd-ed-tab:hover { color: var(--text); }
+.dd-ed-tab.is-active {
+  color: var(--text);
+  background: var(--bg);
+  border-bottom: 2px solid var(--accent);
+  margin-bottom: -1px;
+}
+.dd-ed-tab-badge {
+  color: var(--accent);
+  font-size: 14px;
+  line-height: 1;
 }
 .dd-ed-scroll {
-  height: 100%; overflow: auto;
+  flex: 1;
+  overflow: auto;
   padding: 24px;
 }
 .dd-ed-canvas {
@@ -205,6 +244,100 @@ button.danger:hover { background: var(--danger); color: var(--bg); border-color:
 .dd-ed-form .row-actions {
   display: flex; gap: 6px; margin-top: 12px;
 }
+
+/* Logs pane */
+.dd-ed-logs-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  min-height: 0;
+}
+.dd-ed-logs-pane[hidden] { display: none; }
+.dd-ed-logs-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+.dd-ed-logs-status {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+}
+.dd-ed-logs-status.is-connected {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.dd-ed-logs-status.is-error {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.dd-ed-logs-filter {
+  display: flex; align-items: center; gap: 6px;
+  flex: 0 1 320px;
+}
+.dd-ed-logs-filter input {
+  flex: 1;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 4px 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  outline: none;
+}
+.dd-ed-logs-filter input:focus { border-color: var(--accent); }
+.dd-ed-logs-toggle { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.dd-ed-logs-spacer { flex: 1; }
+.dd-ed-logs-scroll {
+  flex: 1;
+  overflow: auto;
+  background: var(--bg);
+}
+.dd-ed-logs {
+  margin: 0;
+  padding: 12px 16px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.dd-log-line {
+  display: flex;
+  gap: 10px;
+  padding: 1px 0;
+}
+.dd-log-line.is-filtered { display: none; }
+.dd-log-line.is-err { color: var(--danger); }
+.dd-log-ts {
+  color: var(--text-dim);
+  flex: 0 0 auto;
+  user-select: none;
+}
+.dd-log-body { flex: 1; min-width: 0; word-break: break-word; }
+.dd-log-tag {
+  color: var(--accent);
+  font-weight: 500;
+}
+.dd-log-line[data-tag="ctx"]    .dd-log-tag { color: #8be9fd; }
+.dd-log-line[data-tag="press"]  .dd-log-tag { color: #50fa7b; }
+.dd-log-line[data-tag="value"]  .dd-log-tag { color: #50fa7b; }
+.dd-log-line[data-tag="config"] .dd-log-tag { color: #ffb86c; }
+.dd-log-line[data-tag="theme"]  .dd-log-tag { color: #ffb86c; }
+.dd-log-line[data-tag="watcher"].dd-log-tag { color: #ff79c6; }
+.dd-log-line[data-tag="actions"].dd-log-tag { color: #ff5555; }
 
 /* Modal (Hidden Apps) */
 .dd-ed-modal {

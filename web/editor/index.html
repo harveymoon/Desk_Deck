@@ -74,8 +74,29 @@
     </aside>
 
     <section class="dd-ed-canvas-wrap">
-      <div id="canvas-scroll" class="dd-ed-scroll">
+      <div class="dd-ed-tabs" role="tablist">
+        <button class="dd-ed-tab is-active" data-tab="canvas" role="tab">Canvas</button>
+        <button class="dd-ed-tab" data-tab="logs" role="tab">
+          Logs <span class="dd-ed-tab-badge" id="logs-badge" hidden>•</span>
+        </button>
+      </div>
+      <div id="canvas-scroll" class="dd-ed-scroll" data-pane="canvas">
         <div id="canvas" class="dd-ed-canvas"></div>
+      </div>
+      <div id="logs-pane" class="dd-ed-logs-pane" data-pane="logs" hidden>
+        <div class="dd-ed-logs-bar">
+          <span class="dd-ed-logs-status" id="logs-status">disconnected</span>
+          <label class="dd-ed-logs-filter">
+            filter:
+            <input id="logs-filter" type="text" placeholder="e.g. [ctx] or press" autocomplete="off">
+          </label>
+          <label class="dd-ed-logs-toggle"><input type="checkbox" id="logs-autoscroll" checked> autoscroll</label>
+          <span class="dd-ed-logs-spacer"></span>
+          <button id="logs-clear">Clear</button>
+        </div>
+        <div id="logs-scroll" class="dd-ed-logs-scroll">
+          <pre id="logs" class="dd-ed-logs"></pre>
+        </div>
       </div>
     </section>
 
