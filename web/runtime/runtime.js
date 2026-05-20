@@ -164,17 +164,12 @@ async function fetchApps() {
     section.textContent = `Chrome tabs · ${tabsResp.value.tabs.length}`;
     overlayBody.appendChild(section);
     for (const tab of tabsResp.value.tabs) {
-      const tile = document.createElement("button");
-      tile.className = "dd-tile dd-tile-tab";
-      const t = document.createElement("div");
-      t.className = "dd-tile-title";
-      t.textContent = tab.title;
-      tile.appendChild(t);
-      const m = document.createElement("div");
-      m.className = "dd-tile-meta";
-      try { m.textContent = new URL(tab.url).host || tab.url; }
-      catch { m.textContent = tab.url; }
-      tile.appendChild(m);
+      const tile = buildTile({
+        title: tab.title,
+        meta: hostnameOf(tab.url),
+        icon: chromeFavicon(tab.url),
+        cls: "dd-tile-tab",
+      });
       tile.addEventListener("click", async () => {
         await fetch(`/api/chrome/activate/${encodeURIComponent(tab.id)}?t=${encodeURIComponent(token)}`, { method: "POST" });
         closeOverlay();
@@ -198,16 +193,7 @@ async function fetchApps() {
     section.textContent = `Windows · ${wins.length}`;
     overlayBody.appendChild(section);
     for (const w of wins) {
-      const tile = document.createElement("button");
-      tile.className = "dd-tile";
-      const t = document.createElement("div");
-      t.className = "dd-tile-title";
-      t.textContent = w.title;
-      tile.appendChild(t);
-      const m = document.createElement("div");
-      m.className = "dd-tile-meta";
-      m.textContent = w.process || "—";
-      tile.appendChild(m);
+      const tile = buildTile({ title: w.title, meta: w.process || "—", icon: w.icon });
       tile.addEventListener("click", () => {
         send({ t: "focus_hwnd", hwnd: w.hwnd });
         closeOverlay();
@@ -226,6 +212,51 @@ async function fetchApps() {
     hint.innerHTML = "Chrome tabs hidden — relaunch Chrome via <code>start_chrome_debug.bat</code> to enable tab listing.";
     overlayBody.appendChild(hint);
   }
+}
+
+function buildTile({ title, meta, icon, cls = "" }) {
+  const tile = document.createElement("button");
+  tile.className = "dd-tile" + (cls ? " " + cls : "");
+  const iconEl = document.createElement("div");
+  iconEl.className = "dd-tile-icon";
+  if (icon) {
+    const img = document.createElement("img");
+    img.src = icon;
+    img.alt = "";
+    img.loading = "lazy";
+    img.decoding = "async";
+    img.addEventListener("error", () => { iconEl.classList.add("is-fallback"); iconEl.textContent = (title || "?").trim().slice(0, 1).toUpperCase(); });
+    iconEl.appendChild(img);
+  } else {
+    iconEl.classList.add("is-fallback");
+    iconEl.textContent = (title || "?").trim().slice(0, 1).toUpperCase();
+  }
+  tile.appendChild(iconEl);
+
+  const body = document.createElement("div");
+  body.className = "dd-tile-body";
+  const t = document.createElement("div");
+  t.className = "dd-tile-title";
+  t.textContent = title;
+  body.appendChild(t);
+  const m = document.createElement("div");
+  m.className = "dd-tile-meta";
+  m.textContent = meta || "";
+  body.appendChild(m);
+  tile.appendChild(body);
+  return tile;
+}
+
+function hostnameOf(url) {
+  try { return new URL(url).host || url; } catch { return url; }
+}
+
+function chromeFavicon(url) {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+    return `https://www.google.com/s2/favicons?sz=64&domain=${encodeURIComponent(u.hostname)}`;
+  } catch { return null; }
 }
 
 async function fetchSpaces() {

@@ -35,9 +35,15 @@ const els = {
   snapSelect: document.getElementById("snap-select"),
   saveBtn: document.getElementById("save-btn"),
   previewBtn: document.getElementById("preview-btn"),
+  filtersBtn: document.getElementById("filters-btn"),
   newBtn: document.getElementById("config-new"),
   deleteBtn: document.getElementById("config-delete"),
   toast: document.getElementById("toast"),
+  modal: document.getElementById("modal"),
+  modalBody: document.getElementById("modal-body"),
+  modalClose: document.getElementById("modal-close"),
+  modalCancel: document.getElementById("modal-cancel"),
+  modalSave: document.getElementById("modal-save"),
 };
 
 function newLayout(name) {
@@ -482,6 +488,127 @@ els.deleteBtn.addEventListener("click", async () => {
 
 els.saveBtn.addEventListener("click", save);
 els.previewBtn.addEventListener("click", preview);
+els.filtersBtn.addEventListener("click", openFiltersModal);
+els.modalClose.addEventListener("click", closeModal);
+els.modalCancel.addEventListener("click", closeModal);
+els.modal.addEventListener("click", (e) => { if (e.target === els.modal) closeModal(); });
+
+async function openFiltersModal() {
+  els.modal.hidden = false;
+  els.modalBody.innerHTML = "<div class='dd-ed-modal-empty'>loading…</div>";
+  try {
+    const [filtersResp, procsResp] = await Promise.all([
+      fetch("/api/filters" + qs).then(r => r.json()),
+      fetch("/api/processes" + qs).then(r => r.json()),
+    ]);
+    renderFiltersModal(filtersResp, procsResp);
+  } catch (e) {
+    els.modalBody.innerHTML = `<div class='dd-ed-modal-empty'>failed: ${e}</div>`;
+  }
+}
+
+let _modalState = null;
+
+function renderFiltersModal(filters, processes) {
+  // Merge: union of currently-hidden process names and processes seen running now,
+  // case-insensitive but display original casing where possible.
+  const hidden = new Set((filters.hide_processes || []).map(s => s.toLowerCase()));
+  const seen = new Map();
+  for (const p of processes) {
+    seen.set(p.process.toLowerCase(), p);
+  }
+  for (const hp of filters.hide_processes || []) {
+    if (!seen.has(hp.toLowerCase())) {
+      seen.set(hp.toLowerCase(), { process: hp, icon: null, sample_title: "(not running)", windows: 0 });
+    }
+  }
+  const rows = Array.from(seen.values()).sort((a, b) => a.process.toLowerCase().localeCompare(b.process.toLowerCase()));
+
+  _modalState = {
+    hidden: new Set([...(filters.hide_processes || [])].map(s => s.toLowerCase())),
+    hide_classes: filters.hide_classes || [],
+    hide_title_regex: filters.hide_title_regex || [],
+    canonical: new Map(rows.map(r => [r.process.toLowerCase(), r.process])),
+  };
+
+  let html = "<div class='dd-ed-modal-help'>Tick apps to hide them from the tablet's Apps overlay. Window-class and title-regex filters can be edited in <code>configs/_filters.yaml</code>.</div>";
+  els.modalBody.innerHTML = html;
+
+  if (!rows.length) {
+    const e = document.createElement("div");
+    e.className = "dd-ed-modal-empty";
+    e.textContent = "no visible apps right now";
+    els.modalBody.appendChild(e);
+    return;
+  }
+
+  for (const row of rows) {
+    const r = document.createElement("label");
+    r.className = "dd-ed-proc-row";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    const key = row.process.toLowerCase();
+    cb.checked = hidden.has(key);
+    cb.addEventListener("change", () => {
+      if (cb.checked) _modalState.hidden.add(key);
+      else _modalState.hidden.delete(key);
+    });
+    r.appendChild(cb);
+
+    const iconEl = document.createElement("div");
+    iconEl.className = "dd-ed-proc-icon";
+    if (row.icon) {
+      const img = document.createElement("img");
+      img.src = row.icon;
+      img.alt = "";
+      iconEl.appendChild(img);
+    } else {
+      iconEl.textContent = (row.process || "?").slice(0, 1).toUpperCase();
+    }
+    r.appendChild(iconEl);
+
+    const info = document.createElement("div");
+    info.className = "dd-ed-proc-info";
+    const name = document.createElement("div");
+    name.className = "dd-ed-proc-name";
+    name.textContent = row.process;
+    info.appendChild(name);
+    const samp = document.createElement("div");
+    samp.className = "dd-ed-proc-sample";
+    samp.textContent = row.sample_title || "(not running)";
+    info.appendChild(samp);
+    r.appendChild(info);
+
+    const count = document.createElement("div");
+    count.className = "dd-ed-proc-count";
+    count.textContent = row.windows ? `${row.windows} win` : "—";
+    r.appendChild(count);
+
+    els.modalBody.appendChild(r);
+  }
+}
+
+async function closeModal() { els.modal.hidden = true; _modalState = null; }
+
+els.modalSave.addEventListener("click", async () => {
+  if (!_modalState) return closeModal();
+  const hide_processes = Array.from(_modalState.hidden).map(k => _modalState.canonical.get(k) || k);
+  hide_processes.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+  try {
+    const r = await fetch("/api/filters" + qs, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        hide_processes,
+        hide_classes: _modalState.hide_classes,
+        hide_title_regex: _modalState.hide_title_regex,
+      }),
+    });
+    if (!r.ok) throw new Error(r.statusText);
+    toast(`saved · ${hide_processes.length} hidden`);
+    closeModal();
+  } catch (e) { toast("save failed: " + e, true); }
+});
 
 async function save() {
   const name = (layout.name || "").trim() || prompt("Save as name?");

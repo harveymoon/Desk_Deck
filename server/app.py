@@ -23,7 +23,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import actions, auth, chrome, config, desktops, dynamic, registry, themes, watcher
+from . import actions, auth, chrome, config, desktops, dynamic, filters, registry, themes, watcher
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
@@ -437,10 +437,35 @@ def get_context(request: Request) -> JSONResponse:
 
 
 @app.get("/api/windows")
-def list_windows(request: Request) -> JSONResponse:
-    """All visible top-level windows across all processes (for the Apps overlay)."""
+def list_windows(request: Request, include_hidden: bool = False) -> JSONResponse:
+    """All visible top-level windows across all processes (for the Apps overlay).
+
+    By default applies the filter from configs/_filters.yaml. Pass
+    ?include_hidden=true to see filtered entries too (used by the editor)."""
     auth.require_token(request)
-    return JSONResponse(dynamic.enum_all_visible_windows())
+    return JSONResponse(dynamic.enum_all_visible_windows(include_hidden=include_hidden))
+
+
+@app.get("/api/processes")
+def list_processes(request: Request) -> JSONResponse:
+    """Distinct processes with at least one visible top-level window (with icons).
+    Used by the editor's Hidden Apps modal."""
+    auth.require_token(request)
+    return JSONResponse(dynamic.enum_distinct_processes(include_hidden=True))
+
+
+@app.get("/api/filters")
+def get_filters(request: Request) -> JSONResponse:
+    auth.require_token(request)
+    return JSONResponse(filters.load())
+
+
+@app.put("/api/filters")
+async def put_filters(request: Request) -> JSONResponse:
+    auth.require_token(request)
+    body = await request.json()
+    filters.save(body)
+    return JSONResponse({"ok": True})
 
 
 @app.get("/api/chrome/tabs")

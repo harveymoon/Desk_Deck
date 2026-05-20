@@ -173,23 +173,32 @@ def fingerprint(pid: int, process_name: str) -> tuple:
     return tuple((h, t) for h, t in ws)
 
 
-def enum_all_visible_windows() -> list[dict[str, Any]]:
+def enum_all_visible_windows(include_hidden: bool = False, with_icons: bool = True) -> list[dict[str, Any]]:
     """Return every visible top-level window, grouped with its process name.
 
-    Used by the Apps overlay in the title bar.
+    Used by the Apps overlay in the title bar and by the editor's Hidden Apps
+    modal (which passes include_hidden=True to see filtered apps too).
     """
     import psutil
-    proc_cache: dict[int, str] = {}
+    from . import filters, icons
 
-    def proc_name(pid: int) -> str:
+    proc_cache: dict[int, tuple[str, str]] = {}  # pid -> (name, exe_path)
+
+    def proc_info(pid: int) -> tuple[str, str]:
         if pid in proc_cache:
             return proc_cache[pid]
+        name, exe = "", ""
         try:
-            name = psutil.Process(pid).name() if pid else ""
+            p = psutil.Process(pid)
+            name = p.name() or ""
+            try:
+                exe = p.exe() or ""
+            except (psutil.AccessDenied, OSError):
+                exe = ""
         except (psutil.NoSuchProcess, psutil.AccessDenied):
-            name = ""
-        proc_cache[pid] = name
-        return name
+            pass
+        proc_cache[pid] = (name, exe)
+        return name, exe
 
     out: list[dict[str, Any]] = []
 
@@ -201,6 +210,10 @@ def enum_all_visible_windows() -> list[dict[str, Any]]:
         title = win32gui.GetWindowText(hwnd)
         if not title:
             return
+        try:
+            win_class = win32gui.GetClassName(hwnd) or ""
+        except Exception:
+            win_class = ""
         try:
             _, pid = win32process.GetWindowThreadProcessId(hwnd)
         except Exception:
@@ -217,17 +230,52 @@ def enum_all_visible_windows() -> list[dict[str, Any]]:
                 return
         except Exception:
             pass
-        out.append({
+        process, exe = proc_info(pid)
+        hidden = filters.is_hidden(process, title, win_class)
+        if hidden and not include_hidden:
+            return
+        entry: dict[str, Any] = {
             "hwnd": int(hwnd),
             "title": title,
             "pid": int(pid) if pid else 0,
-            "process": proc_name(pid),
-        })
+            "process": process,
+            "win_class": win_class,
+            "hidden": hidden,
+        }
+        if with_icons and exe:
+            entry["icon"] = icons.get_icon_data_url(exe)
+        out.append(entry)
 
     try:
         win32gui.EnumWindows(cb, None)
     except Exception:
         pass
-    # Sort by process name then title
     out.sort(key=lambda w: ((w["process"] or "").lower(), w["title"].lower()))
     return out
+
+
+def enum_distinct_processes(include_hidden: bool = True) -> list[dict[str, Any]]:
+    """Distinct processes with at least one visible top-level window, with icons.
+
+    Used by the editor's Hidden Apps modal so the user can tick processes to
+    hide. Returns one entry per process name, dedup'd, with a representative
+    icon and a sample window title.
+    """
+    wins = enum_all_visible_windows(include_hidden=include_hidden, with_icons=True)
+    seen: dict[str, dict[str, Any]] = {}
+    for w in wins:
+        proc = (w.get("process") or "").lower()
+        if not proc:
+            continue
+        if proc not in seen:
+            seen[proc] = {
+                "process": w["process"],
+                "icon": w.get("icon"),
+                "sample_title": w["title"],
+                "windows": 1,
+                "hidden": w.get("hidden", False),
+            }
+        else:
+            seen[proc]["windows"] += 1
+            seen[proc]["hidden"] = seen[proc]["hidden"] or w.get("hidden", False)
+    return sorted(seen.values(), key=lambda d: d["process"].lower())

@@ -42,6 +42,10 @@ def load_all() -> list[dict[str, Any]]:
             return _cache
         out: list[dict[str, Any]] = []
         for p in sorted(CONFIG_DIR.glob("*.yaml")):
+            # Skip underscore-prefixed files — those are non-layout configs
+            # (e.g. _filters.yaml) that shouldn't appear in matchers or UI.
+            if p.name.startswith("_"):
+                continue
             try:
                 out.append(_read(p))
             except Exception as e:

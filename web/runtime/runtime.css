@@ -287,17 +287,40 @@ html, body {
   background: var(--surface);
   border: var(--border-w) solid var(--border);
   color: var(--text);
-  padding: 18px 20px;
+  padding: 16px 20px;
   text-align: left;
   cursor: pointer;
   font-family: var(--font-ui);
-  display: flex; flex-direction: column;
-  gap: 6px;
+  display: flex; flex-direction: row; align-items: center;
+  gap: 16px;
   min-height: 110px;
   transition: background 60ms linear, border-color 60ms linear, color 60ms linear;
 }
 .dd-tile:hover, .dd-tile:active { background: var(--surface-2); border-color: var(--border-hi); }
 .dd-tile.is-current { border-color: var(--accent); color: var(--text); }
+
+.dd-tile-icon {
+  width: 48px; height: 48px;
+  flex: 0 0 48px;
+  background: var(--surface-2);
+  border: var(--border-w) solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 22px;
+  color: var(--text-dim);
+}
+.dd-tile-icon img {
+  width: 100%; height: 100%;
+  object-fit: contain;
+  image-rendering: -webkit-optimize-contrast;
+}
+.dd-tile-icon.is-fallback { background: var(--surface-2); }
+
+.dd-tile-body {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column;
+  gap: 6px;
+}
 .dd-tile-title {
   font-size: 17px;
   line-height: 1.3;

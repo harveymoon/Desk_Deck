@@ -1,0 +1,13 @@
+hide_processes:
+- NVIDIA Overlay.exe
+- NVIDIA Share.exe
+- TextInputHost.exe
+- SearchHost.exe
+- StartMenuExperienceHost.exe
+- ShellExperienceHost.exe
+hide_classes:
+- Progman
+- Shell_TrayWnd
+- WorkerW
+hide_title_regex:
+- ^Program Manager$

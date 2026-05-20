@@ -163,9 +163,34 @@ The top of the tablet shows the current context and three menu buttons:
 
 | Button | Overlay | Backed by                                              |
 |--------|---------|---------------------------------------------------------|
-| **▦**  | Apps    | `/api/windows` — every visible top-level window. Also lists **Chrome tabs** if Chrome is running with DevTools Protocol on port 9222 (use `start_chrome_debug.bat`). |
+| **▦**  | Apps    | `/api/windows` — every visible top-level window, each rendered with the app's real Windows icon. Also lists **Chrome tabs** if Chrome is running with DevTools Protocol on port 9222 (use `start_chrome_debug.bat`). Apps you've hidden (see below) are filtered out. |
 | **▢▢** | Spaces  | `/api/desktops` — Windows virtual desktops via [pyvda]  |
 | **★**  | Bookmarks | `configs/bookmarks.yaml` — pinned cross-context macros |
+
+### Hiding invisible / noise apps
+
+Some Windows processes have visible top-level windows that aren't really
+useful as switch targets — NVIDIA overlays, search hosts, the Program
+Manager desktop. The editor has a **Hidden apps** button in the top bar
+that opens a modal listing every running process with its icon; tick the
+ones you want to suppress and save.
+
+The selection is persisted to `configs/_filters.yaml`:
+
+```yaml
+hide_processes:
+  - NVIDIA Overlay.exe
+  - TextInputHost.exe
+hide_classes:
+  - Progman          # the desktop
+  - Shell_TrayWnd    # the taskbar
+hide_title_regex:
+  - ^Program Manager$
+```
+
+A sensible default set ships with the project — you can edit the YAML
+directly to add window-class or title-regex filters (the modal only
+covers process names).
 
 [pyvda]: https://github.com/mrob95/pyvda
 
@@ -485,7 +510,10 @@ the query-string form.
 | GET    | `/api/themes`              | token     | List themes                          |
 | GET    | `/api/themes/{name}`       | token     | Fetch theme                          |
 | GET    | `/api/context`             | token     | Current foreground + active config   |
-| GET    | `/api/windows`             | token     | Every visible top-level window       |
+| GET    | `/api/windows`             | token     | Visible top-level windows (filtered, includes icons). `?include_hidden=true` to see filtered entries too. |
+| GET    | `/api/processes`           | token     | Distinct processes with icons (used by the Hidden Apps modal) |
+| GET    | `/api/filters`             | token     | App filter config                    |
+| PUT    | `/api/filters`             | token     | Save app filter config               |
 | GET    | `/api/desktops`            | token     | Virtual desktops list                |
 | POST   | `/api/desktops/{i}`        | token     | Switch to desktop i                  |
 | POST   | `/api/focus/{hwnd}`        | token     | Focus a window by HWND               |
@@ -554,6 +582,8 @@ Desk_Deck/
     themes.py          # theme loader + hot-reload
     desktops.py        # virtual desktop helpers (pyvda)
     chrome.py          # Chrome DevTools Protocol client (tabs)
+    filters.py         # app filter (hide list) load/save/check
+    icons.py           # Windows .exe icon extraction → PNG data URLs
     registry.py        # provider discovery
     providers/
       __init__.py
@@ -585,6 +615,7 @@ Desk_Deck/
     notepad.yaml
     chrome.yaml
     vscode.yaml
+    _filters.yaml      # app hide list (managed via editor modal)
   themes/
     midnight.yaml
     graphite.yaml

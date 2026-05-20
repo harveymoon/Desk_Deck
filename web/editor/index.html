@@ -28,10 +28,25 @@
           <option value="32">32</option>
         </select>
       </label>
+      <button id="filters-btn">Hidden apps</button>
       <button id="preview-btn">Preview on tablet</button>
       <button id="save-btn" class="primary">Save</button>
     </div>
   </header>
+
+  <div id="modal" class="dd-ed-modal" hidden>
+    <div class="dd-ed-modal-card">
+      <header class="dd-ed-modal-head">
+        <h2 id="modal-title">Hidden apps</h2>
+        <button id="modal-close">×</button>
+      </header>
+      <div class="dd-ed-modal-body" id="modal-body"></div>
+      <footer class="dd-ed-modal-foot">
+        <button id="modal-cancel">Cancel</button>
+        <button id="modal-save" class="primary">Save</button>
+      </footer>
+    </div>
+  </div>
 
   <main class="dd-ed-main">
     <aside class="dd-ed-palette">
