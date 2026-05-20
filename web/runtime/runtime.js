@@ -28,6 +28,60 @@ if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("/runtime-static/sw.js").catch(() => {});
 }
 
+// ───────── Fullscreen + Wake Lock + Orientation ─────────
+// Android Chrome won't grant true PWA install on a plain-HTTP LAN origin,
+// so "Add to home screen" hands you a shortcut that opens in a regular tab
+// (Chrome top bar visible). The Fullscreen API works in *any* browser
+// context — we trip it on the first user gesture and the chrome disappears.
+let _fullscreenAttempted = false;
+let _wakeLock = null;
+
+async function goFullscreen() {
+  if (_fullscreenAttempted) return;
+  if (document.fullscreenElement) { _fullscreenAttempted = true; return; }
+  const el = document.documentElement;
+  const req = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen;
+  if (!req) return;
+  try {
+    await req.call(el, { navigationUI: "hide" });
+    _fullscreenAttempted = true;
+  } catch (e) {
+    // Some browsers reject without a recent gesture; we'll try again on the next pointerdown.
+  }
+}
+
+async function lockOrientationLandscape() {
+  try { await screen.orientation.lock("landscape"); } catch {}
+}
+
+async function requestWakeLock() {
+  if (!("wakeLock" in navigator)) return;
+  try {
+    _wakeLock = await navigator.wakeLock.request("screen");
+    _wakeLock.addEventListener("release", () => { _wakeLock = null; });
+  } catch {}
+}
+
+// First user tap fires all three. Subsequent taps re-request fullscreen only
+// if the user exited (e.g. by pressing Back) and they tap something else.
+document.addEventListener("pointerdown", async () => {
+  await goFullscreen();
+  await lockOrientationLandscape();
+  await requestWakeLock();
+}, { capture: true });
+
+// When the tablet wakes from sleep / tab returns, re-acquire the wake lock
+// (it auto-releases when the page is hidden).
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") requestWakeLock();
+});
+
+// If the user manually exits fullscreen (Back / Esc), re-arm so the next
+// tap takes them back into it.
+document.addEventListener("fullscreenchange", () => {
+  if (!document.fullscreenElement) _fullscreenAttempted = false;
+});
+
 applyTheme(document.documentElement, DEFAULT_THEME);
 
 const stage     = document.getElementById("stage");

@@ -98,8 +98,30 @@ Open `/pair` in any browser on the PC, scan the QR from the tablet, and the
 tablet stores the token in `localStorage`. After that, the tablet URL works
 without the `?t=` query string.
 
-**Add to home screen** (Chrome → Install app) for a fullscreen, no-Chrome-chrome
-experience with the Desk_Deck app icon.
+**Add to home screen** (Chrome → Install app) for the Desk_Deck app icon
+on your launcher. See [Android fullscreen note](#android-fullscreen-note)
+below — the runtime engages the Fullscreen API on first tap so you get
+true edge-to-edge regardless of whether Chrome installs it as a real PWA
+or as a shortcut.
+
+### Android fullscreen note
+
+Android Chrome won't install a real PWA over plain HTTP from a LAN IP
+(it requires HTTPS), so "Add to home screen" usually creates a browser
+*shortcut* — and shortcuts open in a regular tab with Chrome's URL bar
+visible.
+
+Desk_Deck works around this with the Fullscreen API: **the first time
+you tap anywhere in the runtime**, the page requests fullscreen and the
+Chrome chrome disappears. It also locks orientation to landscape and
+acquires a screen wake lock so the tablet doesn't dim while you're
+using it. If you press Back / Esc to exit fullscreen, the next tap puts
+it back.
+
+For *true* PWA install (where Android shows "Install app" instead of
+just "Add to home screen"), you need HTTPS — terminate TLS in front of
+Desk_Deck with Caddy / Nginx / Tailscale Serve, then the install prompt
+appears and the icon launches as a standalone app with no chrome at all.
 
 Manual install (if you'd rather skip `run.bat`):
 
