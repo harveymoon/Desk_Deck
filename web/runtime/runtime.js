@@ -233,6 +233,7 @@ async function fetchApps() {
   _appsCache = {
     wins: winsResp.value || [],
     tabs: (tabsResp.status === "fulfilled" && tabsResp.value.available) ? tabsResp.value.tabs : null,
+    chromeWindows: (tabsResp.status === "fulfilled" && tabsResp.value.available) ? tabsResp.value.windows : null,
     chromeAvailable: tabsResp.status === "fulfilled" && tabsResp.value.available,
     ts: Date.now(),
   };
@@ -310,13 +311,53 @@ function renderAppsRoot() {
 
 function renderAppsDrill(processName) {
   const isChrome = processName.toLowerCase() === "chrome.exe";
-  const wins = _appsCache.wins.filter(w => (w.process || "").toLowerCase() === processName.toLowerCase());
-  const showTabs = isChrome && _appsCache.tabs && _appsCache.tabs.length;
+  const osWins = _appsCache.wins.filter(w => (w.process || "").toLowerCase() === processName.toLowerCase());
 
-  overlayTitle.textContent =
-    `${prettyAppName(processName)} · ${showTabs ? _appsCache.tabs.length + " tabs" : wins.length + " windows"}`;
+  // Chrome with CDP + window grouping → tree view
+  if (isChrome && _appsCache.chromeWindows && _appsCache.chromeWindows.length) {
+    const groups = _appsCache.chromeWindows;
+    let totalTabs = 0;
+    for (const g of groups) totalTabs += g.tabs.length;
+    overlayTitle.textContent =
+      `${prettyAppName(processName)} · ${totalTabs} tab${totalTabs === 1 ? "" : "s"} · ${groups.length} window${groups.length === 1 ? "" : "s"}`;
 
-  if (showTabs) {
+    groups.forEach((g, idx) => {
+      const head = document.createElement("button");
+      head.className = "dd-section-head dd-section-clickable";
+      const firstTab = g.tabs[0];
+      const label = firstTab ? truncate(firstTab.title, 80) : "(unnamed)";
+      head.innerHTML =
+        `<span class="dd-section-tag">Window ${idx + 1} · ${g.tabs.length} tab${g.tabs.length === 1 ? "" : "s"}</span>` +
+        `<span class="dd-section-label">${escapeHtml(label)}</span>`;
+      if (firstTab) {
+        head.addEventListener("click", async () => {
+          await fetch(`/api/chrome/activate/${encodeURIComponent(firstTab.id)}?t=${encodeURIComponent(token)}`, { method: "POST" });
+          closeOverlay();
+        });
+      }
+      overlayBody.appendChild(head);
+
+      for (const tab of g.tabs) {
+        const tile = buildTile({
+          title: tab.title,
+          meta: hostnameOf(tab.url),
+          icon: chromeFavicon(tab.url),
+          cls: "dd-tile-tab",
+        });
+        tile.addEventListener("click", async () => {
+          await fetch(`/api/chrome/activate/${encodeURIComponent(tab.id)}?t=${encodeURIComponent(token)}`, { method: "POST" });
+          closeOverlay();
+        });
+        overlayBody.appendChild(tile);
+      }
+    });
+    return;
+  }
+
+  // Chrome with CDP but no grouping (older Chrome / WS failed) → flat tab list
+  if (isChrome && _appsCache.tabs && _appsCache.tabs.length) {
+    overlayTitle.textContent =
+      `${prettyAppName(processName)} · ${_appsCache.tabs.length} tabs`;
     for (const tab of _appsCache.tabs) {
       const tile = buildTile({
         title: tab.title,
@@ -333,7 +374,9 @@ function renderAppsDrill(processName) {
     return;
   }
 
-  for (const w of wins) {
+  // Fallback (no CDP) — per-window tiles
+  overlayTitle.textContent = `${prettyAppName(processName)} · ${osWins.length} window${osWins.length === 1 ? "" : "s"}`;
+  for (const w of osWins) {
     const tile = buildTile({ title: w.title, meta: w.process || "—", icon: w.icon });
     tile.addEventListener("click", () => {
       send({ t: "focus_hwnd", hwnd: w.hwnd });
@@ -341,6 +384,11 @@ function renderAppsDrill(processName) {
     });
     overlayBody.appendChild(tile);
   }
+}
+
+function truncate(s, n) { return (s && s.length > n) ? s.slice(0, n - 1) + "…" : (s || ""); }
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
 function prettyAppName(process) {

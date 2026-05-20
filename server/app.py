@@ -521,11 +521,24 @@ async def put_filters(request: Request) -> JSONResponse:
 
 
 @app.get("/api/chrome/tabs")
-def list_chrome_tabs(request: Request) -> JSONResponse:
+async def list_chrome_tabs(request: Request) -> JSONResponse:
     """List Chrome tabs via DevTools Protocol. Empty if --remote-debugging-port=9222
-    isn't enabled. Use start_chrome_debug.bat to launch Chrome with the flag."""
+    isn't enabled. Use start_chrome_debug.bat to launch Chrome with the flag.
+
+    Tabs are enriched with window_id (the CDP-side window they belong to) and
+    grouped into windows[] so the client can render a tree."""
     auth.require_token(request)
-    return JSONResponse({"available": chrome.available(), "tabs": chrome.list_tabs()})
+    if not chrome.available():
+        return JSONResponse({"available": False, "tabs": [], "windows": []})
+    tabs = await chrome.list_tabs_with_windows_async()
+    by_window: dict[int | None, list] = {}
+    for t in tabs:
+        by_window.setdefault(t.get("window_id"), []).append(t)
+    windows = [
+        {"window_id": wid, "tabs": tlist}
+        for wid, tlist in sorted(by_window.items(), key=lambda kv: (kv[0] is None, kv[0] or 0))
+    ]
+    return JSONResponse({"available": True, "tabs": tabs, "windows": windows})
 
 
 @app.post("/api/chrome/activate/{tab_id}")

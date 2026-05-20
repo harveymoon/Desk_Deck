@@ -379,9 +379,39 @@ html, body {
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--text-dim);
-  padding: 8px 0 6px;
+  padding: 14px 4px 8px;
   border-bottom: 1px solid var(--border);
-  margin-bottom: 6px;
+  margin: 12px 0 4px;
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  width: 100%;
+}
+.dd-section-head:first-child { margin-top: 0; }
+.dd-section-clickable {
+  cursor: pointer;
+  transition: color 60ms linear, border-color 60ms linear;
+}
+.dd-section-clickable:hover { color: var(--text); border-bottom-color: var(--accent); }
+.dd-section-tag {
+  flex: 0 0 auto;
+  color: var(--accent);
+  font-weight: 600;
+}
+.dd-section-label {
+  flex: 1; min-width: 0;
+  color: var(--text-dim);
+  text-transform: none;
+  letter-spacing: 0.02em;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-ui);
 }
 .dd-tile-tab { border-color: var(--border); }
 .dd-tile-tab:hover { border-color: var(--accent); }

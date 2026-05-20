@@ -88,3 +88,64 @@ def find_window_for_tab(title: str):
         if title and title in win_title:
             return hwnd
     return wins[0][0] if wins else None
+
+
+def _browser_ws_url() -> str | None:
+    """Get the browser-level WebSocket URL from /json/version."""
+    try:
+        with urllib.request.urlopen(f"http://{CDP_HOST}:{CDP_PORT}/json/version", timeout=TIMEOUT_S) as r:
+            data = json.loads(r.read())
+        return data.get("webSocketDebuggerUrl")
+    except Exception:
+        return None
+
+
+async def list_tabs_with_windows_async() -> list[dict]:
+    """Return list_tabs() output enriched with window_id per tab.
+
+    Opens the browser-level CDP WebSocket and calls Browser.getWindowForTarget
+    for each tab. Falls back to window_id=None if CDP misbehaves.
+    """
+    import asyncio
+    import websockets
+
+    tabs = list_tabs()
+    if not tabs:
+        return []
+    ws_url = _browser_ws_url()
+    if not ws_url:
+        return [{**t, "window_id": None} for t in tabs]
+
+    enriched: list[dict] = []
+    try:
+        async with websockets.connect(ws_url, open_timeout=2, close_timeout=1, max_size=4_000_000) as ws:
+            # Send all requests first, then drain — CDP supports request pipelining.
+            for i, t in enumerate(tabs):
+                await ws.send(json.dumps({
+                    "id": i + 1,
+                    "method": "Browser.getWindowForTarget",
+                    "params": {"targetId": t["id"]},
+                }))
+            pending: dict[int, dict] = {(i + 1): t for i, t in enumerate(tabs)}
+            while pending:
+                try:
+                    raw = await asyncio.wait_for(ws.recv(), timeout=2.0)
+                except asyncio.TimeoutError:
+                    break
+                msg = json.loads(raw)
+                rid = msg.get("id")
+                if rid is None or rid not in pending:
+                    continue
+                tab = pending.pop(rid)
+                wid = ((msg.get("result") or {}).get("windowId"))
+                enriched.append({**tab, "window_id": wid})
+            # Any leftover (unanswered) get None
+            for tab in pending.values():
+                enriched.append({**tab, "window_id": None})
+    except Exception as e:
+        print(f"[chrome] window grouping failed: {e}", flush=True)
+        return [{**t, "window_id": None} for t in tabs]
+
+    # Preserve original tab order (CDP target list order = recently-used order)
+    by_id = {e["id"]: e for e in enriched}
+    return [by_id[t["id"]] for t in tabs if t["id"] in by_id]
