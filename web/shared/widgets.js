@@ -254,18 +254,31 @@ function renderSlider(w, emit) {
   }
   el._update = (v) => update(v);
 
+  let dragPointerId = null;
   function onDown(e) {
     e.preventDefault();
     dragging = true;
+    dragPointerId = e.pointerId;
     el.setPointerCapture && el.setPointerCapture(e.pointerId);
+    // Move/up listeners go on document so the drag survives if the
+    // browser yanks the pointer off the slider element (Android Chrome
+    // does this when it heuristically decides the gesture is a scroll).
+    document.addEventListener("pointermove", onDocMove);
+    document.addEventListener("pointerup",     onDocEnd);
+    document.addEventListener("pointercancel", onDocEnd);
     handleMove(e);
   }
-  function onMove(e) {
-    if (!dragging) return;
+  function onDocMove(e) {
+    if (!dragging || e.pointerId !== dragPointerId) return;
     handleMove(e);
   }
-  function onUp(e) {
+  function onDocEnd(e) {
+    if (!dragging || e.pointerId !== dragPointerId) return;
     dragging = false;
+    dragPointerId = null;
+    document.removeEventListener("pointermove", onDocMove);
+    document.removeEventListener("pointerup",     onDocEnd);
+    document.removeEventListener("pointercancel", onDocEnd);
     try { el.releasePointerCapture(e.pointerId); } catch {}
     // Force-flush the final value so the receiver lands exactly where the
     // thumb stopped, even if the last move arrived inside the throttle window.
@@ -284,9 +297,6 @@ function renderSlider(w, emit) {
     update(pctToValue(pct), { emit: true });
   }
   el.addEventListener("pointerdown", onDown);
-  el.addEventListener("pointermove", onMove);
-  el.addEventListener("pointerup", onUp);
-  el.addEventListener("pointercancel", onUp);
 
   update(value);
   return el;
@@ -528,39 +538,17 @@ function renderValueLadder(w, emit) {
   // Block the text-select callout that fires on iOS long-press.
   el.addEventListener("selectstart", (e) => e.preventDefault());
 
-  el.addEventListener("pointerdown", (e) => {
-    e.preventDefault();
-    dragging = true;
-    phase = "vertical";
-    chosenIdx = Math.floor(magnitudes.length / 2);
-    startX = e.clientX;
-    startY = e.clientY;
-    cursorX = e.clientX;
-    el.classList.add("is-active");
-    // Same fixed-position trick as the param-panel inline ladder so
-    // the popup always floats above the rest of the UI regardless of
-    // overflow-clipping containers.
-    const r = el.getBoundingClientRect();
-    stack.style.left = `${r.left + r.width / 2}px`;
-    stack.style.bottom = `${window.innerHeight - r.top + 8}px`;
-    stack.classList.add("is-visible");
-    highlight();
-    try { el.setPointerCapture(e.pointerId); } catch {}
-    if (navigator.vibrate) navigator.vibrate(8);
-  });
+  let dragPointerId = null;
 
-  el.addEventListener("pointermove", (e) => {
-    if (!dragging) return;
+  function onDocMove(e) {
+    if (!dragging || e.pointerId !== dragPointerId) return;
     const dx = e.clientX - startX;
     const dy = e.clientY - startY;
-
     if (phase === "vertical") {
       const center = Math.floor(magnitudes.length / 2);
-      // dy > 0 (moved down) → smaller magnitudes (lower in stack)
       let idx = center + Math.round(dy / ROW_PX);
       idx = Math.max(0, Math.min(magnitudes.length - 1, idx));
       if (idx !== chosenIdx) { chosenIdx = idx; highlight(); }
-
       if (Math.abs(dx) > LOCK_PX) {
         phase = "horizontal";
         stack.classList.remove("is-visible");
@@ -573,24 +561,46 @@ function renderValueLadder(w, emit) {
       if (steps !== 0) {
         const mag = magnitudes[chosenIdx];
         const delta = steps * mag;
-        // Cap excessive precision so server JSON stays clean
         const clean = Number(delta.toFixed(6));
         emit({ t: "value", id: w.id, value: clean });
         cursorX += steps * STEP_PX;
       }
     }
-  });
-
-  const finish = (e) => {
-    if (!dragging) return;
+  }
+  function onDocEnd(e) {
+    if (!dragging || e.pointerId !== dragPointerId) return;
     dragging = false;
     phase = "off";
+    dragPointerId = null;
     el.classList.remove("is-active");
     stack.classList.remove("is-visible");
+    document.removeEventListener("pointermove", onDocMove);
+    document.removeEventListener("pointerup",     onDocEnd);
+    document.removeEventListener("pointercancel", onDocEnd);
     try { el.releasePointerCapture(e.pointerId); } catch {}
-  };
-  el.addEventListener("pointerup", finish);
-  el.addEventListener("pointercancel", finish);
+  }
+
+  el.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    dragging = true;
+    phase = "vertical";
+    dragPointerId = e.pointerId;
+    chosenIdx = Math.floor(magnitudes.length / 2);
+    startX = e.clientX;
+    startY = e.clientY;
+    cursorX = e.clientX;
+    el.classList.add("is-active");
+    const r = el.getBoundingClientRect();
+    stack.style.left = `${r.left + r.width / 2}px`;
+    stack.style.bottom = `${window.innerHeight - r.top + 8}px`;
+    stack.classList.add("is-visible");
+    highlight();
+    try { el.setPointerCapture(e.pointerId); } catch {}
+    document.addEventListener("pointermove", onDocMove);
+    document.addEventListener("pointerup",     onDocEnd);
+    document.addEventListener("pointercancel", onDocEnd);
+    if (navigator.vibrate) navigator.vibrate(8);
+  });
 
   return el;
 }
@@ -782,7 +792,7 @@ function parRowControl(par, opPath, emit) {
   }
   paint(val);
 
-  let dragging = false, lastSent = null, throttleTimer = null;
+  let dragging = false, lastSent = null, throttleTimer = null, dragPointerId = null;
   function flush() {
     throttleTimer = null;
     if (val === lastSent) return;
@@ -799,22 +809,33 @@ function parRowControl(par, opPath, emit) {
     paint(val);
     if (throttleTimer === null) throttleTimer = setTimeout(flush, 70);
   }
+  // Document-level move/up listeners — Android Chrome's gesture system
+  // sometimes fires pointercancel on the track mid-drag (treating the
+  // touch as a scroll); listening on document keeps the drag alive.
+  function onDocMove(e) {
+    if (!dragging || e.pointerId !== dragPointerId) return;
+    setFromEvent(e);
+  }
+  function onDocEnd(e) {
+    if (!dragging || e.pointerId !== dragPointerId) return;
+    dragging = false;
+    dragPointerId = null;
+    document.removeEventListener("pointermove", onDocMove);
+    document.removeEventListener("pointerup",     onDocEnd);
+    document.removeEventListener("pointercancel", onDocEnd);
+    if (throttleTimer !== null) { clearTimeout(throttleTimer); throttleTimer = null; }
+    flush();
+  }
   track.addEventListener("pointerdown", (e) => {
     e.preventDefault();
     dragging = true;
+    dragPointerId = e.pointerId;
     try { track.setPointerCapture(e.pointerId); } catch {}
+    document.addEventListener("pointermove", onDocMove);
+    document.addEventListener("pointerup",     onDocEnd);
+    document.addEventListener("pointercancel", onDocEnd);
     setFromEvent(e);
   });
-  track.addEventListener("pointermove", (e) => { if (dragging) setFromEvent(e); });
-  const end = (e) => {
-    if (!dragging) return;
-    dragging = false;
-    try { track.releasePointerCapture(e.pointerId); } catch {}
-    if (throttleTimer !== null) { clearTimeout(throttleTimer); throttleTimer = null; }
-    flush();
-  };
-  track.addEventListener("pointerup", end);
-  track.addEventListener("pointercancel", end);
 
   // Inline value ladder for this row — same gesture as the standalone
   // ladder widget, but emits a delta with the row's own path/par so the
@@ -868,7 +889,7 @@ function makeInlineLadder({ isInt, onNudge }) {
   el.addEventListener("contextmenu", (e) => e.preventDefault());
   el.addEventListener("selectstart", (e) => e.preventDefault());
 
-  let dragging = false, phase = "off";
+  let dragging = false, phase = "off", dragPointerId = null;
   let chosenIdx = Math.floor(magnitudes.length / 2);
   let startX = 0, startY = 0, cursorX = 0;
 
@@ -878,31 +899,11 @@ function makeInlineLadder({ isInt, onNudge }) {
     });
   }
 
-  el.addEventListener("pointerdown", (e) => {
-    e.preventDefault();
-    dragging = true;
-    phase = "vertical";
-    chosenIdx = Math.floor(magnitudes.length / 2);
-    startX = e.clientX; startY = e.clientY; cursorX = e.clientX;
-    el.classList.add("is-active");
-    // Position the stack via fixed coords from the button's rect so
-    // it floats above every other UI element regardless of which
-    // overflow-clipping container the button sits in.
-    const r = el.getBoundingClientRect();
-    stack.style.left = `${r.left + r.width / 2}px`;
-    stack.style.bottom = `${window.innerHeight - r.top + 6}px`;
-    stack.classList.add("is-visible");
-    highlight();
-    try { el.setPointerCapture(e.pointerId); } catch {}
-    if (navigator.vibrate) navigator.vibrate(8);
-  });
-
-  el.addEventListener("pointermove", (e) => {
-    if (!dragging) return;
+  function onDocMove(e) {
+    if (!dragging || e.pointerId !== dragPointerId) return;
     const dx = e.clientX - startX;
     const dy = e.clientY - startY;
     if (phase === "vertical") {
-      // Pick magnitude based on Y delta from start; up = larger idx (smaller value).
       const center = Math.floor(magnitudes.length / 2);
       const offset = Math.round(dy / ROW_PX);
       chosenIdx = Math.max(0, Math.min(magnitudes.length - 1, center + offset));
@@ -922,18 +923,41 @@ function makeInlineLadder({ isInt, onNudge }) {
         cursorX += steps * STEP_PX;
       }
     }
-  });
-
-  const finish = (e) => {
-    if (!dragging) return;
+  }
+  function onDocEnd(e) {
+    if (!dragging || e.pointerId !== dragPointerId) return;
     dragging = false;
     phase = "off";
+    dragPointerId = null;
     el.classList.remove("is-active");
     stack.classList.remove("is-visible");
+    document.removeEventListener("pointermove", onDocMove);
+    document.removeEventListener("pointerup",     onDocEnd);
+    document.removeEventListener("pointercancel", onDocEnd);
     try { el.releasePointerCapture(e.pointerId); } catch {}
-  };
-  el.addEventListener("pointerup", finish);
-  el.addEventListener("pointercancel", finish);
+  }
+
+  el.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    dragging = true;
+    phase = "vertical";
+    dragPointerId = e.pointerId;
+    chosenIdx = Math.floor(magnitudes.length / 2);
+    startX = e.clientX; startY = e.clientY; cursorX = e.clientX;
+    el.classList.add("is-active");
+    const r = el.getBoundingClientRect();
+    stack.style.left = `${r.left + r.width / 2}px`;
+    stack.style.bottom = `${window.innerHeight - r.top + 6}px`;
+    stack.classList.add("is-visible");
+    highlight();
+    try { el.setPointerCapture(e.pointerId); } catch {}
+    // Listen on document so drag survives Android Chrome firing
+    // pointercancel on the button mid-gesture.
+    document.addEventListener("pointermove", onDocMove);
+    document.addEventListener("pointerup",     onDocEnd);
+    document.addEventListener("pointercancel", onDocEnd);
+    if (navigator.vibrate) navigator.vibrate(8);
+  });
 
   return el;
 }
