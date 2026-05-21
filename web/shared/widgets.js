@@ -786,7 +786,11 @@ function groupParsByTuplet(pars) {
 function tryColorTuplet(pars, start) {
   if (start + 2 >= pars.length) return null;
   const a = pars[start], b = pars[start + 1], c = pars[start + 2];
-  const isNum = (x) => x && (x.style === "Float" || x.style === "Int");
+  // Channel pars in a TD color pargroup have par.style == "RGB" /
+  // "RGBA" (the GROUP's style, mirrored to each member). Plain
+  // Float/Int also pass through so manually-built colour groups
+  // (rare) still get caught.
+  const isNum = (x) => x && (x.style === "Float" || x.style === "Int" || x.style === "RGB" || x.style === "RGBA");
   if (!isNum(a) || !isNum(b) || !isNum(c)) return null;
   const aN = (a.name || "").toLowerCase();
   const bN = (b.name || "").toLowerCase();

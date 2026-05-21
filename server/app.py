@@ -303,6 +303,17 @@ def _on_td_selected(payload: dict | None) -> None:
             _loop,
         )
         return
+    # Diagnostic: first page's par names + styles + tuplet info, so
+    # we can verify why colour-group folding does/doesn't trigger.
+    if pages:
+        first = pages[0]
+        summary = []
+        for p in (first.get("pars") or [])[:8]:
+            bits = f"{p.get('name')}({p.get('style')})"
+            t = p.get("tuplet")
+            if t: bits += f"[tup={t.get('name')}/{t.get('size')}/{t.get('style')}]"
+            summary.append(bits)
+        print(f"[td_pars] {ops[0].get('path')} page='{first.get('name')}': {', '.join(summary)}", flush=True)
     asyncio.run_coroutine_threadsafe(
         hub.push_widget_update("td_pars", {
             "op": ops[0],
