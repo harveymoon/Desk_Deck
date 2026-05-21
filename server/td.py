@@ -90,6 +90,12 @@ async def on_message(msg: dict) -> None:
         _state["hello"] = msg
         print(f"[td] hello · {msg.get('project') or '(no project)'} · "
               f"version {msg.get('td_version') or '?'}", flush=True)
+        # Treat every hello as "the connector restarted; resync me." This
+        # covers both first-connect AND TD's Reset Extensions case, where
+        # the .tox Python class is re-instantiated (clearing its _subs set)
+        # without the underlying WebSocket closing — without this, the
+        # connector goes silent until the next actual reconnect.
+        resync_subscriptions()
         _notify("hello", msg)
         return
     if t == "state":

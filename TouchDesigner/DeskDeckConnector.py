@@ -61,6 +61,17 @@ class DeskDeckConnector:
         self._rx_verbose_until = 5      # print full payload for the first N rx messages
         self._last_status_print = 0
 
+        # Reset Extensions case: the .tox is reloading Python but the ws is
+        # already open. The real onConnect won't fire again, so re-send
+        # hello manually after the comp finishes initializing — the server
+        # treats every hello as "resync your subscribe cmds to me."
+        try:
+            ws = self.ownerComp.op("ws")
+            if ws is not None and ws.par.active.eval():
+                run("args[0].OnConnect()", self, delayFrames=2)
+        except Exception:
+            pass
+
     # ─────────── connection lifecycle ───────────
 
     def Connect(self):
