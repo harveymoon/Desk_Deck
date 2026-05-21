@@ -633,27 +633,32 @@ body.has-overlay .dd-sidebar { display: none; }
 
 .dd-winri-strip {
   display: flex;
-  gap: 14px;
+  gap: 12px;
   overflow-x: auto;
-  padding: 16px;
+  padding: 12px;
   background: var(--surface);
   border: 1px solid var(--border);
   -webkit-overflow-scrolling: touch;
-  /* Strip grows to fill remaining vertical space in the overlay so the
-     thumbnails get as much room as the layout can give them. */
-  flex: 1 1 auto;
-  min-height: 320px;
+  /* Fixed-ish strip height — items size their own WIDTH to match the
+     thumbnail's natural aspect ratio (set inline by JS once the img
+     loads), so narrow/portrait windows get narrow cards and wide
+     ones get wide cards. More cards fit on a line that way. */
   align-items: stretch;
+  height: 240px;
+  flex: 0 0 auto;
 }
 .dd-winri-strip-item {
-  flex: 0 0 360px;
+  /* Provisional width while the thumbnail is still loading — JS
+     overwrites this with a width derived from the image's aspect
+     ratio as soon as we know it. */
+  flex: 0 0 240px;
   background: var(--surface-2);
   border: 1px solid var(--border);
   padding: 0;
   cursor: pointer;
   display: flex; flex-direction: column;
   overflow: hidden;
-  transition: border-color 60ms linear;
+  transition: border-color 60ms linear, flex-basis 120ms ease-out;
 }
 @media (hover: hover) {
   .dd-winri-strip-item:hover { border-color: var(--border-hi); }
@@ -693,25 +698,26 @@ body.has-overlay .dd-sidebar { display: none; }
   text-transform: uppercase;
 }
 .dd-winri-strip-body {
-  /* Label sits below the thumbnail at a fixed, predictable height so
-     it doesn't push into the preview area. */
+  /* Fixed-height label row beneath the thumb so the thumb area
+     gets a predictable, constant height across every card (which is
+     what lets the per-card width = thumb_h × aspect work cleanly). */
   flex: 0 0 auto;
-  padding: 10px 12px;
+  padding: 8px 10px;
   display: flex; flex-direction: column;
-  gap: 4px;
+  gap: 3px;
   background: var(--surface-2);
   border-top: 1px solid var(--border);
 }
 .dd-winri-strip-title {
   color: var(--text);
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.25;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .dd-winri-strip-proc {
   color: var(--text-dim);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 10px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;

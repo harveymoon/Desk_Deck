@@ -716,6 +716,13 @@ function updateWinriStrip(state) {
       img.decoding = "async";
       img.alt = "";
       img.src = thumbnailUrl(wid);
+      // Once the thumbnail has loaded we know its natural aspect ratio.
+      // Resize the card so width = thumb_area_height × aspect — narrow
+      // (portrait) windows get narrow cards, ultrawides get wide ones,
+      // and the strip can pack more in. Clamped so a 9:16 portrait
+      // doesn't shrink unreadably and a 32:9 ultrawide doesn't eat the
+      // whole strip.
+      img.addEventListener("load", () => sizeStripItemToAspect(item, img));
       img.addEventListener("error", () => {
         img.style.display = "none";
         if (!wrap.querySelector(".dd-winri-strip-thumb-placeholder")) {
@@ -748,6 +755,10 @@ function updateWinriStrip(state) {
     const body = item.querySelector(".dd-winri-strip-body");
     body.children[0].textContent = w.title || "(untitled)";
     body.children[1].textContent = `${w.process || "—"}  ·  w:${Math.round(w.width || 0)}px`;
+    // If the image is already loaded (cached / re-render), the load event
+    // won't fire again — re-apply the aspect-driven sizing manually.
+    const img = item.querySelector(".dd-winri-strip-thumb");
+    if (img && img.complete && img.naturalWidth) sizeStripItemToAspect(item, img);
     // Ensure the item sits at its expected position (after `prev`, or as
     // firstChild if prev is null). Bug fix: a new item starts detached from
     // the DOM, so insertBefore(item, expectedPos) both moves AND attaches.
@@ -772,6 +783,26 @@ function section(text) {
   el.className = "dd-winri-section-head";
   el.textContent = text;
   return el;
+}
+
+// Size a strip card so its width matches its thumbnail's aspect ratio.
+// Clamps prevent extreme portraits/ultrawides from breaking the layout.
+const STRIP_ITEM_MIN_W = 140;
+const STRIP_ITEM_MAX_W = 480;
+function sizeStripItemToAspect(item, img) {
+  if (!img || !img.naturalWidth || !img.naturalHeight) return;
+  // Defer one frame so the item is guaranteed laid out (image 'load'
+  // can fire before the item is inserted into the strip when the image
+  // is cached, leaving thumb.clientHeight at 0).
+  requestAnimationFrame(() => {
+    const thumb = item.querySelector(".dd-winri-strip-thumb-wrap");
+    if (!thumb) return;
+    const thumbH = thumb.clientHeight;
+    if (thumbH <= 0) return;
+    const ar = img.naturalWidth / img.naturalHeight;
+    const w = Math.max(STRIP_ITEM_MIN_W, Math.min(STRIP_ITEM_MAX_W, Math.round(thumbH * ar)));
+    item.style.flex = `0 0 ${w}px`;
+  });
 }
 
 function winriBtn({ glyph, label, action, scroll, resize, warn }) {
