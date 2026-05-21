@@ -6,13 +6,13 @@ canvas:
   height: 1000
   theme: midnight
 widgets:
-  # ─── LEFT COLUMN: status bar on top, console fills the rest ───
+  # ─── LEFT COLUMN (1/3 of canvas): status on top, console fills the rest ───
 
   - id: td_status
     type: textbox
     x: 24
     y: 24
-    w: 800
+    w: 512
     h: 44
     props:
       monospace: true
@@ -23,20 +23,20 @@ widgets:
     type: textbox
     x: 24
     y: 84
-    w: 800
+    w: 512
     h: 892
     props:
       monospace: true
       max_lines: 600
       source: td_textport
 
-  # ─── RIGHT COLUMN: 4 quick buttons up top, par panel below ───
+  # ─── RIGHT COLUMN (2/3 of canvas): 4 quick buttons up top, par panel below ───
 
   - id: save
     type: button
-    x: 848
+    x: 560
     y: 24
-    w: 174
+    w: 240
     h: 96
     props:
       label: SAVE
@@ -44,9 +44,9 @@ widgets:
 
   - id: perform
     type: button
-    x: 1030
+    x: 812
     y: 24
-    w: 174
+    w: 240
     h: 96
     props:
       label: PERFORM
@@ -54,9 +54,9 @@ widgets:
 
   - id: palette
     type: button
-    x: 1212
+    x: 1064
     y: 24
-    w: 174
+    w: 240
     h: 96
     props:
       label: PALETTE
@@ -64,9 +64,9 @@ widgets:
 
   - id: textport
     type: button
-    x: 1394
+    x: 1316
     y: 24
-    w: 174
+    w: 240
     h: 96
     props:
       label: TEXTPORT
@@ -75,9 +75,9 @@ widgets:
   # Selection summary (one-liner: which op is being shown below).
   - id: td_sel
     type: textbox
-    x: 848
+    x: 560
     y: 132
-    w: 540
+    w: 808
     h: 40
     props:
       monospace: true
@@ -86,9 +86,9 @@ widgets:
 
   - id: td_help
     type: button
-    x: 1396
+    x: 1380
     y: 132
-    w: 84
+    w: 86
     h: 40
     props:
       label: "?"
@@ -96,23 +96,21 @@ widgets:
 
   - id: td_help_py
     type: button
-    x: 1484
+    x: 1470
     y: 132
-    w: 84
+    w: 86
     h: 40
     props:
       label: "PY?"
       action: { type: td_open_help, python: true }
 
   # Live par editor for whatever op is selected in TD. Pages render as
-  # tabs, every par becomes an editable row. Mousing over a par in TD
-  # highlights its row here (no separate rollover text widget — the
-  # row's accent stripe is enough).
+  # tabs, every par becomes an editable row.
   - id: td_pars
     type: param_panel
-    x: 848
+    x: 560
     y: 184
-    w: 720
+    w: 996
     h: 792
     props:
       action: { type: td_set_par }

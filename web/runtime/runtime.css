@@ -745,6 +745,10 @@ body.has-overlay .dd-sidebar { display: none; }
 }
 
 /* ─── Param Panel (TD live editor for selected op) ─── */
+/* Everything in here is sized at 2× the original — the tablet panel
+   is the user's main edit surface and needs to be reachable without
+   pinching. Doubled values: padding, font, control heights, label
+   column width, ladder + slider geometry. */
 .dd-param-panel {
   position: absolute;
   background: var(--surface);
@@ -755,13 +759,13 @@ body.has-overlay .dd-sidebar { display: none; }
   overflow: hidden;
 }
 .dd-pp-header {
-  padding: 8px 12px;
+  padding: 16px 24px;
   border-bottom: var(--border-w) solid var(--border);
   background: var(--surface-2);
   flex: 0 0 auto;
 }
 .dd-pp-op {
-  font-size: 12px;
+  font-size: 24px;
   letter-spacing: 0.1em;
   color: var(--text-dim);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -780,45 +784,45 @@ body.has-overlay .dd-sidebar { display: none; }
   border-right: 1px solid var(--border);
   color: var(--text-dim);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 22px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  padding: 10px 14px;
+  padding: 20px 28px;
   cursor: pointer;
   white-space: nowrap;
 }
 .dd-pp-tab.is-active {
   color: var(--text);
   background: var(--surface);
-  box-shadow: inset 0 -2px 0 var(--accent);
+  box-shadow: inset 0 -4px 0 var(--accent);
 }
 .dd-pp-body {
   flex: 1 1 auto;
   overflow-y: auto;
-  padding: 4px 0;
+  padding: 8px 0;
 }
 .dd-pp-empty {
   color: var(--text-dim);
-  padding: 24px;
+  padding: 48px;
   text-align: center;
-  font-size: 12px;
+  font-size: 24px;
 }
 .dd-pp-row {
   display: grid;
-  grid-template-columns: 180px 1fr;
-  gap: 12px;
+  grid-template-columns: 280px 1fr;
+  gap: 24px;
   align-items: center;
-  padding: 6px 12px;
+  padding: 12px 24px;
   border-bottom: 1px solid var(--border);
-  min-height: 40px;
+  min-height: 80px;
   transition: background 80ms linear;
 }
 .dd-pp-row.is-hot {
   background: var(--surface-2);
-  box-shadow: inset 3px 0 0 var(--accent);
+  box-shadow: inset 6px 0 0 var(--accent);
 }
 .dd-pp-lbl {
-  font-size: 12px;
+  font-size: 24px;
   color: var(--text-dim);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
@@ -831,10 +835,10 @@ body.has-overlay .dd-sidebar { display: none; }
   border: 1px solid var(--border);
   color: var(--text-dim);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 24px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  padding: 6px 14px;
+  padding: 12px 28px;
   cursor: pointer;
 }
 .dd-pp-toggle.is-on {
@@ -848,8 +852,8 @@ body.has-overlay .dd-sidebar { display: none; }
   border: 1px solid var(--border);
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: 12px;
-  padding: 6px 10px;
+  font-size: 24px;
+  padding: 12px 20px;
   width: 100%;
 }
 .dd-pp-str input {
@@ -857,20 +861,20 @@ body.has-overlay .dd-sidebar { display: none; }
   border: 1px solid var(--border);
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: 12px;
-  padding: 6px 10px;
+  font-size: 24px;
+  padding: 12px 20px;
   width: 100%;
   box-sizing: border-box;
 }
 .dd-pp-slider {
   display: grid;
-  grid-template-columns: 38px 1fr 80px;
-  gap: 8px;
+  grid-template-columns: 76px 1fr 160px;
+  gap: 16px;
   align-items: center;
 }
 .dd-pp-slider-track {
   position: relative;
-  height: 26px;
+  height: 52px;
   background: var(--surface-2);
   border: 1px solid var(--border);
   cursor: pointer;
@@ -892,7 +896,7 @@ body.has-overlay .dd-sidebar { display: none; }
 .dd-pp-slider-val {
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 24px;
   text-align: right;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
@@ -904,11 +908,11 @@ body.has-overlay .dd-sidebar { display: none; }
   border: 1px solid var(--border);
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: 16px;
+  font-size: 28px;
   letter-spacing: 0.05em;
   padding: 0;
-  height: 26px;
-  width: 38px;
+  height: 52px;
+  width: 76px;
   cursor: grab;
   position: relative;
   overflow: visible;
@@ -936,14 +940,14 @@ body.has-overlay .dd-sidebar { display: none; }
   border: 1px solid var(--accent);
   z-index: 1000;
   font-family: var(--font-mono);
-  font-size: 12px;
-  min-width: 64px;
+  font-size: 24px;
+  min-width: 128px;
   pointer-events: none;
   transform: translateX(-50%);
 }
 .dd-pp-ladder-stack.is-visible { display: flex; }
 .dd-pp-ladder-row {
-  padding: 8px 12px;
+  padding: 16px 24px;
   text-align: center;
   color: var(--text-dim);
   border-bottom: 1px solid var(--border);
@@ -963,16 +967,16 @@ body.has-overlay .dd-sidebar { display: none; }
 }
 .dd-pp-color-main {
   display: grid;
-  grid-template-columns: 38px 28px 1fr;
-  gap: 10px;
+  grid-template-columns: 76px 56px 1fr;
+  gap: 20px;
   align-items: center;
 }
 .dd-pp-color-swatch {
   /* Flat swatch button — tap opens our custom HSV popup picker. */
   appearance: none;
   -webkit-appearance: none;
-  width: 38px;
-  height: 26px;
+  width: 76px;
+  height: 52px;
   background: #888;
   border: 1px solid var(--border);
   padding: 0;
@@ -1114,9 +1118,9 @@ body.has-overlay .dd-sidebar { display: none; }
   border: 1px solid var(--border);
   color: var(--text-dim);
   font-family: var(--font-mono);
-  font-size: 11px;
-  height: 26px;
-  width: 28px;
+  font-size: 22px;
+  height: 52px;
+  width: 56px;
   padding: 0;
   cursor: pointer;
 }
@@ -1128,7 +1132,7 @@ body.has-overlay .dd-sidebar { display: none; }
 .dd-pp-color-hex {
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 24px;
   letter-spacing: 0.06em;
   white-space: nowrap;
   overflow: hidden;
@@ -1140,21 +1144,21 @@ body.has-overlay .dd-sidebar { display: none; }
      the [hidden] attribute and the channels would always be visible. */
   display: none;
   flex-direction: column;
-  gap: 4px;
-  padding: 6px 0 2px 0;
+  gap: 8px;
+  padding: 12px 0 4px 0;
   border-top: 1px dashed var(--border);
 }
 .dd-pp-row-color.is-expanded .dd-pp-color-channels { display: flex; }
 .dd-pp-channel-row {
   display: grid;
-  grid-template-columns: 24px 1fr;
-  gap: 8px;
+  grid-template-columns: 48px 1fr;
+  gap: 16px;
   align-items: center;
 }
 .dd-pp-channel-lbl {
   color: var(--text-dim);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 22px;
   text-align: right;
   text-transform: uppercase;
 }
@@ -1163,18 +1167,18 @@ body.has-overlay .dd-sidebar { display: none; }
 .dd-pp-tuplet-ctl {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
 }
 .dd-pp-tuplet-channel {
   display: grid;
-  grid-template-columns: 24px 1fr;
-  gap: 8px;
+  grid-template-columns: 48px 1fr;
+  gap: 16px;
   align-items: center;
 }
 .dd-pp-tuplet-lbl {
   color: var(--text-dim);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 22px;
   text-align: right;
   text-transform: uppercase;
 }
