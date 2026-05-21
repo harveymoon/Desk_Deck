@@ -23,12 +23,14 @@ extension looks them up by name):
 
 ### Custom parameters on the .tox parent
 
-Add a custom parameter page named `Desk Deck`:
+Add a custom parameter page (e.g. `Connect`) with:
 
-| Name     | Type   | Default                          | Notes                                                                 |
-|----------|--------|----------------------------------|-----------------------------------------------------------------------|
-| `Server` | string | `ws://192.168.1.161:8765`        | Address of the Desk_Deck server. `http(s)://` is normalized to `ws(s)://`. |
-| `Token`  | string | *(paste your paired token)*      | The contents of `%APPDATA%\Desk_Deck\token`.                          |
+| Name             | Type   | Default        | Notes                                                                              |
+|------------------|--------|----------------|------------------------------------------------------------------------------------|
+| `Netaddress`     | Str    | `127.0.0.1`    | Just the host (no port, no scheme). Or a full `ws://host[/path]` if you prefer.    |
+| `Port`           | Int    | `8765`         | Server port. The Web Socket DAT splits host + port across two fields, so this is separate. |
+| `Token`          | Str    | *(paste your paired token)* | The contents of `%APPDATA%\Desk_Deck\token`.                       |
+| `Streamtextport` | Toggle | `Off`          | When on, every `print()` / `debug()` in TD is mirrored to the tablet's `td_log` textbox. After toggling, call `op('Desk_Deck').SyncPrintMirror()` (or hit Connect again). |
 
 ### `ws_callbacks` snippet
 

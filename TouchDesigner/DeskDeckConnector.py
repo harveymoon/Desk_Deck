@@ -26,19 +26,69 @@ through this class's `_handle_*` methods, so the surface is auditable.
 """
 
 import json
+import sys
 
 import TDFunctions as TDF  # ships with TouchDesigner
+
+
+class _PrintMirror:
+    """Wraps a file-like object (sys.stdout / sys.stderr); each completed
+    line is passed to `sink` IN ADDITION to the original write. Used by the
+    optional Mirrorprint feature so TD's textport output is shadowed to
+    the tablet log textbox."""
+
+    def __init__(self, original, sink):
+        self.original = original
+        self.sink = sink
+        self._partial = ""
+
+    def write(self, text):
+        try:
+            self.original.write(text)
+        except Exception:
+            pass
+        if not text:
+            return
+        self._partial += text
+        while "\n" in self._partial:
+            line, self._partial = self._partial.split("\n", 1)
+            line = line.rstrip("\r")
+            if line:
+                try:
+                    self.sink(line)
+                except Exception:
+                    pass
+
+    def flush(self):
+        try:
+            self.original.flush()
+        except Exception:
+            pass
+
+    def isatty(self):
+        try:
+            return self.original.isatty()
+        except Exception:
+            return False
+
+    def fileno(self):
+        return self.original.fileno()
 
 
 class DeskDeckConnector:
     def __init__(self, ownerComp):
         self.ownerComp = ownerComp
 
-        # Configurable on the parent .tox custom params, with fallback defaults
-        # if the user hasn't wired them yet.
-        TDF.createProperty(self, "Server", value="ws://127.0.0.1:8765",
+        # Custom parameters on the .tox parent (page "Connect"):
+        #   Netaddress     Str        host or ws://host[/path]
+        #   Port           Int        the server port (e.g. 8765)
+        #   Token          Str        paired token from %APPDATA%/Desk_Deck/token
+        #   Streamtextport Toggle    if on, sys.stdout/stderr mirror to tablet log
+        # Properties below are just fallbacks if those params don't exist yet.
+        TDF.createProperty(self, "Netaddress", value="127.0.0.1",
                            dependable=True, readOnly=False)
-        TDF.createProperty(self, "Token", value="", dependable=True, readOnly=False)
+        TDF.createProperty(self, "Port",  value=8765, dependable=True, readOnly=False)
+        TDF.createProperty(self, "Token", value="",   dependable=True, readOnly=False)
 
         # State the connector diffs against to emit only on change.
         self._last_selected = None      # tuple of op paths
@@ -55,6 +105,16 @@ class DeskDeckConnector:
         # any TD script to wire one up. Inbound {"kind":"macro","name":...}
         # commands look up here.
         self._macros = {}
+
+        # Optional textport mirror — wraps sys.stdout/stderr so every print()
+        # in TD also flows to the tablet's td_log textbox. Off by default;
+        # toggled via the `Mirrorprint` custom parameter on the .tox parent.
+        self._orig_stdout = None
+        self._orig_stderr = None
+        self._sync_print_mirror()
+
+        # Diagnose missing log DAT once (rather than silently no-op every tick).
+        self._log_dat_missing_warned = False
 
         # Debug counters / rate-limit.
         self._stats = {"tick": 0, "rx": 0, "tx": 0, "emit": 0}
@@ -79,47 +139,53 @@ class DeskDeckConnector:
     # ─────────── connection lifecycle ───────────
 
     def Connect(self):
-        """Open the WebSocket. Reads `Server` and `Token` from .tox params.
+        """Open the WebSocket. Reads Netaddress / Port / Token from the
+        .tox parent's custom parameters.
 
-        Accepts `Server` in any of these forms:
-          ws://192.168.1.161:8765        (scheme + host + port)
-          192.168.1.161:8765             (no scheme — assumes ws://)
-          192.168.1.161                  (just host — uses default port 8765)
+        Netaddress accepts any of:
+          127.0.0.1                       (just host)
+          ws://192.168.1.161              (scheme + host; path auto-appended)
+          ws://192.168.1.161/live?...     (full URL; used verbatim)
 
-        Web Socket DAT parameter shape varies between TD builds. We probe
-        for a single `url` param first (modern); otherwise fall back to
-        `netaddress` + `port` (older) and try a `path`-style param for the
-        URL path. The chosen route is printed via debug() so you can sanity-
-        check in the textport.
+        Port comes from the separate Port param (Web Socket DAT splits
+        host from port across two fields).
         """
-        srv = self._pp("Server", self.Server)
-        tok = self._pp("Token", self.Token)
-        if not srv:
-            self._dbg("Connect: no Server configured")
+        addr_raw = self._pp("Netaddress", self.Netaddress)
+        port = self._pp("Port", self.Port)
+        tok  = self._pp("Token", self.Token)
+
+        if not addr_raw:
+            self._dbg("Connect: Netaddress is empty — set the host on Desk_Deck.tox")
             return
         if not tok:
-            self._dbg("Connect: WARNING — no Token. Server will reject the WS "
-                      "with 'Forbidden'. Paste %APPDATA%\\Desk_Deck\\token into "
-                      "the Token parameter on Desk_Deck.tox.")
+            self._dbg("Connect: WARNING — Token is empty. Server will reject "
+                      "the WS with Forbidden. Paste %APPDATA%/Desk_Deck/token "
+                      "into the Token parameter on Desk_Deck.tox.")
 
-        # Normalize the Server string into host / port / scheme.
+        try:
+            port = int(port)
+        except Exception:
+            port = 8765
+
         from urllib.parse import urlsplit
-        raw = srv.strip()
+        raw = str(addr_raw).strip()
         if "://" not in raw:
             raw = "ws://" + raw
         parts = urlsplit(raw)
         host = parts.hostname or "127.0.0.1"
-        port = parts.port or (8765 if parts.scheme in ("ws", "http") else 443)
-        secure = parts.scheme in ("wss", "https")
+        scheme = "wss" if parts.scheme in ("wss", "https") else "ws"
 
-        path = f"/live?device=touchdesigner"
-        if tok:
-            path += f"&t={tok}"
+        # If the user supplied a path in Netaddress, use it as-is; otherwise
+        # build the standard /live?device=touchdesigner&t=<token>.
+        if parts.path and parts.path not in ("", "/"):
+            path = parts.path + (("?" + parts.query) if parts.query else "")
+        else:
+            path = "/live?device=touchdesigner"
+            if tok:
+                path += f"&t={tok}"
 
-        # Web Socket DAT's address parameter wants the full URL — scheme,
-        # host, path, query — but WITHOUT the port (the port lives in the
-        # separate `port` param). Verified against TD 2023+ Web Socket DAT.
-        scheme = "wss" if secure else "ws"
+        # Web Socket DAT wants the full URL (no port in URL) in netaddress,
+        # port separately in port. Probe param names for build differences.
         address_url = f"{scheme}://{host}{path}"
 
         ws = op("ws")
@@ -138,11 +204,8 @@ class DeskDeckConnector:
                 return False
 
         addr_set = setp("netaddress", address_url) or setp("Netaddress", address_url) \
-                   or setp("address", address_url) or setp("Address", address_url)
+                   or setp("address", address_url)    or setp("Address", address_url)
         port_set = setp("port", port) or setp("Port", port)
-        for s in ("Secure", "secure", "Usehttps"):
-            if setp(s, secure):
-                break
 
         if not addr_set:
             self._dbg("Connect: ERROR — couldn't find an address parameter on the Web Socket DAT")
@@ -154,6 +217,9 @@ class DeskDeckConnector:
         ws.par.active = False  # cycle to force reconnect with new settings
         ws.par.active = True
         self._dbg(f"Connect: address={address_url}  port={port}")
+
+        # Refresh the textport mirror in case Streamtextport changed since init.
+        self._sync_print_mirror()
 
     def Disconnect(self):
         ws = op("ws")
@@ -500,7 +566,14 @@ class DeskDeckConnector:
 
     def _flush_log(self):
         log_dat = op("log")
-        if log_dat is None or log_dat.numRows == 0:
+        if log_dat is None:
+            if not self._log_dat_missing_warned:
+                self._dbg("Log: no `log` textDAT inside Desk_Deck.tox — "
+                          "add one (named exactly 'log') and Log() output "
+                          "will flow to the tablet.")
+                self._log_dat_missing_warned = True
+            return
+        if log_dat.numRows == 0:
             return
         lines = [log_dat[r, 0].val for r in range(log_dat.numRows)]
         log_dat.clear()
@@ -511,12 +584,46 @@ class DeskDeckConnector:
     # ─────────── helpers ───────────
 
     def Log(self, msg):
-        """Append a line to the textport-mirror buffer; flushed on next Tick."""
+        """Append a line to the textport-mirror buffer; flushed on next Tick.
+
+        Always works regardless of the Mirrorprint toggle — that toggle
+        only controls whether print()/debug() output is ALSO captured.
+        Explicit Log() calls are always sent.
+        """
         log_dat = op("log")
         if log_dat is None:
             debug(f"[DeskDeck:Log] (no log DAT) {msg}")
             return
         log_dat.appendRow([str(msg)])
+
+    def SyncPrintMirror(self):
+        """Public alias — call after toggling the Streamtextport parameter.
+
+        Example from textport:
+          op('Desk_Deck').par.Streamtextport = True
+          op('Desk_Deck').SyncPrintMirror()
+        """
+        self._sync_print_mirror()
+
+    def _sync_print_mirror(self):
+        """Install / restore the sys.stdout & sys.stderr mirror based on the
+        Streamtextport toggle on the .tox parent. Safe to call repeatedly."""
+        want = bool(self._pp("Streamtextport", False))
+        currently_mirroring = isinstance(sys.stdout, _PrintMirror)
+        if want and not currently_mirroring:
+            self._orig_stdout = sys.stdout
+            self._orig_stderr = sys.stderr
+            sys.stdout = _PrintMirror(sys.stdout, self.Log)
+            sys.stderr = _PrintMirror(sys.stderr, self.Log)
+            self._dbg("Streamtextport ON — print()/debug() output mirrors to tablet log")
+        elif not want and currently_mirroring:
+            if self._orig_stdout is not None:
+                sys.stdout = self._orig_stdout
+            if self._orig_stderr is not None:
+                sys.stderr = self._orig_stderr
+            self._orig_stdout = None
+            self._orig_stderr = None
+            self._dbg("Streamtextport OFF")
 
     def RegisterMacro(self, name, fn):
         """Register a callable invokable from the tablet via
