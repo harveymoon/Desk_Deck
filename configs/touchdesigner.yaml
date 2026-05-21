@@ -76,3 +76,83 @@ widgets:
     props:
       label: TEXTPORT
       action: { type: hotkey, keys: alt+t }
+
+  # ───────── live TD bridge (Desk_Deck.tox must be loaded + connected) ─────────
+
+  - id: td_sel
+    type: textbox
+    x: 40
+    y: 388
+    w: 1080
+    h: 44
+    props:
+      monospace: true
+      max_lines: 2
+      source: td_selected
+
+  - id: td_help
+    type: button
+    x: 1140
+    y: 388
+    w: 200
+    h: 44
+    props:
+      label: HELP
+      action: { type: td_open_help }
+
+  - id: td_help_py
+    type: button
+    x: 1356
+    y: 388
+    w: 200
+    h: 44
+    props:
+      label: PY HELP
+      action: { type: td_open_help, python: true }
+
+  - id: td_rollover
+    type: textbox
+    x: 40
+    y: 448
+    w: 760
+    h: 56
+    props:
+      monospace: true
+      max_lines: 2
+      source: td_rollover
+
+  - id: td_rollover_drive
+    type: slider
+    x: 820
+    y: 448
+    w: 736
+    h: 56
+    props:
+      label: VAL
+      min: 0
+      max: 1
+      step: 0.001
+      orientation: horizontal
+      action: { type: td_set_par, path: "$rollover", par: "$rollover" }
+
+  - id: td_perf
+    type: textbox
+    x: 40
+    y: 520
+    w: 1516
+    h: 40
+    props:
+      monospace: true
+      max_lines: 1
+      source: td_perf
+
+  - id: td_log
+    type: textbox
+    x: 40
+    y: 576
+    w: 1516
+    h: 384
+    props:
+      monospace: true
+      max_lines: 200
+      source: td_textport

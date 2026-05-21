@@ -6,7 +6,7 @@ from typing import Any
 
 import keyboard
 
-from . import desktops, registry
+from . import desktops, registry, td
 
 
 def dispatch(action: dict[str, Any] | None, payload: dict[str, Any] | None = None,
@@ -119,6 +119,89 @@ def _chrome_tab(action: dict[str, Any], payload: dict[str, Any], context: dict, 
         _focus_window({"hwnd": hwnd}, {}, context, widget)
 
 
+def _td_set_par(action: dict[str, Any], payload: dict[str, Any], context: dict, widget: dict) -> None:
+    """Push a parameter value into TouchDesigner.
+
+    action = { type: "td_set_par", path: "/proj/noise1", par: "amp" }
+    payload may carry { "value": ... } from a slider; otherwise action.value is used.
+
+    Sentinel: path / par == "$rollover" → resolve at dispatch time from
+    td.state("rollover_par") so the widget always drives whatever's under
+    the mouse RIGHT NOW. When both path and par are $rollover (the
+    quick-adjust slider case), we also map the tablet's 0..1 slider
+    range onto the par's normMin..normMax so a fixed slider widget
+    drives any parameter sensibly.
+    """
+    path = action.get("path") or ""
+    par = action.get("par") or ""
+    is_rollover = (path == "$rollover" and par == "$rollover")
+    if path == "$rollover" or par == "$rollover":
+        rp = td.state("rollover_par") or {}
+        op_ = (rp.get("op") or {})
+        p = (rp.get("par") or {})
+        if not op_.get("path") or not p.get("name"):
+            print("[actions] td_set_par: $rollover unresolved (no par under mouse)", flush=True)
+            return
+        if path == "$rollover":
+            path = op_["path"]
+        if par == "$rollover":
+            par = p["name"]
+        if is_rollover:
+            # Map 0..1 from the tablet slider → par's normMin..normMax
+            nmin = float(p.get("normMin") or 0.0)
+            nmax = float(p.get("normMax") or 1.0)
+            raw = payload.get("value") if payload and "value" in payload else action.get("value")
+            if raw is None:
+                return
+            try:
+                raw = float(raw)
+            except (TypeError, ValueError):
+                return
+            value = nmin + max(0.0, min(1.0, raw)) * (nmax - nmin)
+            # Honor par type — Toggle wants a bool, Int rounds.
+            style = p.get("style")
+            if style == "Toggle":
+                value = bool(value >= 0.5)
+            elif style == "Int":
+                value = int(round(value))
+            td.send_cmd("set_par", path=path, par=par, value=value)
+            return
+    value = payload.get("value") if payload and "value" in payload else action.get("value")
+    if value is None:
+        return
+    td.send_cmd("set_par", path=path, par=par, value=value)
+
+
+def _td_macro(action: dict[str, Any], payload: dict[str, Any], context: dict, widget: dict) -> None:
+    name = action.get("name")
+    if not name:
+        return
+    td.send_cmd("macro", name=name, args=action.get("args") or {})
+
+
+def _td_open_help(action: dict[str, Any], payload: dict[str, Any], context: dict, widget: dict) -> None:
+    """Open the docs.derivative.ca page for the currently-selected op."""
+    import webbrowser
+    sel = td.state("selected") or {}
+    ops = sel.get("ops") or []
+    if not ops:
+        print("[actions] td_open_help: no selection", flush=True)
+        return
+    o = ops[0]
+    op_type = o.get("type") or ""
+    family = o.get("family") or ""
+    if not op_type or not family or not op_type.endswith(family):
+        print(f"[actions] td_open_help: bad op type {op_type!r} family {family!r}", flush=True)
+        return
+    head = op_type[: -len(family)]
+    slug = f"{head[:1].upper()}{head[1:]}_{family.upper()}"
+    url = f"https://docs.derivative.ca/{slug}"
+    if action.get("python"):
+        url += "_Class"
+    print(f"[actions] td_open_help → {url}", flush=True)
+    webbrowser.open(url)
+
+
 _HANDLERS = {
     "hotkey": _hotkey,
     "command": _command,
@@ -127,4 +210,7 @@ _HANDLERS = {
     "switch_desktop": _switch_desktop,
     "python": _python,
     "chrome_tab": _chrome_tab,
+    "td_set_par": _td_set_par,
+    "td_macro": _td_macro,
+    "td_open_help": _td_open_help,
 }

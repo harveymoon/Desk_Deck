@@ -23,7 +23,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import actions, auth, chrome, config, desktops, dynamic, filters, log_buffer, registry, sidebar, themes, watcher, winri
+from . import actions, auth, chrome, config, desktops, dynamic, filters, log_buffer, registry, sidebar, td, themes, watcher, winri
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
@@ -180,7 +180,34 @@ async def _on_startup() -> None:
     themes.watch(on_change=_on_theme_change)
     _window_poll_task = asyncio.create_task(_poll_window_changes())
     _desktop_poll_task = asyncio.create_task(_poll_desktop_changes())
+
+    # When TD reports a new parameter under the mouse, also nudge any
+    # tablet widget with id="td_rollover_drive" so its slider position
+    # reflects the new par's current value (mapped to 0..1).
+    td.subscribe("rollover_par", _on_td_rollover_par)
+
     print("[startup] watcher + hot-reload + window/desktop pollers running", flush=True)
+
+
+def _on_td_rollover_par(payload: dict | None) -> None:
+    if _loop is None:
+        return
+    p = ((payload or {}).get("par") or {})
+    val = p.get("value")
+    if val is None:
+        return
+    try:
+        v = float(val) if not isinstance(val, bool) else (1.0 if val else 0.0)
+    except (TypeError, ValueError):
+        return
+    nmin = float(p.get("normMin") or 0.0)
+    nmax = float(p.get("normMax") or 1.0)
+    span = nmax - nmin
+    norm = 0.0 if span == 0 else max(0.0, min(1.0, (v - nmin) / span))
+    asyncio.run_coroutine_threadsafe(
+        hub.push_widget_update("td_rollover_drive", {"value": norm}),
+        _loop,
+    )
 
 
 @app.on_event("shutdown")
@@ -805,6 +832,26 @@ async def live(ws: WebSocket) -> None:
     device = ws.query_params.get("device", "tablet")
     await ws.accept()
     await hub.add(ws, device=device)
+
+    # TouchDesigner client: route inbound JSON to td.on_message; skip
+    # layout/theme/desktops bootstrap (TD doesn't render those).
+    if device == "touchdesigner":
+        td.register_ws(ws, asyncio.get_running_loop())
+        td.resync_subscriptions()
+        try:
+            while True:
+                raw = await ws.receive_text()
+                try:
+                    msg = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+                await td.on_message(msg)
+        except WebSocketDisconnect:
+            pass
+        finally:
+            td.unregister_ws(ws)
+            await hub.remove(ws)
+        return
 
     # Push the currently-resolved layout + theme + desktops to bootstrap UI.
     cfg = _resolve_layout()
