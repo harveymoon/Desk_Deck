@@ -70,6 +70,12 @@ document.addEventListener("pointerdown", async () => {
   await requestWakeLock();
 }, { capture: true });
 
+// Block Android Chrome / iOS long-press context menus app-wide. The
+// tablet is a controller surface — there's nothing the OS context
+// menu can usefully do here, and it consistently breaks drag gestures
+// (long-press on a slider/ladder pops it instead of holding).
+document.addEventListener("contextmenu", (e) => e.preventDefault());
+
 // When the tablet wakes from sleep / tab returns, re-acquire the wake lock
 // (it auto-releases when the page is hidden).
 document.addEventListener("visibilitychange", () => {

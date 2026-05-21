@@ -10,6 +10,7 @@ html, body {
   overscroll-behavior: none;
   -webkit-user-select: none;
   user-select: none;
+  -webkit-touch-callout: none;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
 }
@@ -207,10 +208,14 @@ html, body {
   position: relative;
   background: var(--surface-2);
   border: var(--border-w) solid var(--border);
+  touch-action: none;
 }
 .dd-slider-fill {
   position: absolute;
   background: var(--accent);
+  /* Same reason as .dd-pp-slider-fill — without this, finger-down on
+     the fill area lets the browser claim the touch as a scroll. */
+  pointer-events: none;
 }
 .dd-slider.is-horizontal .dd-slider-fill { left: 0; top: 0; bottom: 0; }
 .dd-slider.is-vertical .dd-slider-fill { left: 0; right: 0; bottom: 0; }
@@ -878,6 +883,11 @@ body.has-overlay .dd-sidebar { display: none; }
   left: 0; top: 0; bottom: 0;
   background: var(--accent);
   width: 0%;
+  /* Touches on the fill must pass through to the track underneath,
+     otherwise the fill (without touch-action:none) lets the browser
+     steal the gesture as a scroll and our pointermove handler stops
+     firing mid-drag. */
+  pointer-events: none;
 }
 .dd-pp-slider-val {
   color: var(--text);
