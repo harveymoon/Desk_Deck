@@ -205,7 +205,7 @@ function openOverlay(kind) {
     overlayTitle.textContent = "Spaces — virtual desktops";
     fetchSpaces();
   } else if (kind === "bookmarks") {
-    overlayTitle.textContent = "Bookmarks";
+    overlayTitle.textContent = "Favorites";
     fetchBookmarks();
   } else if (kind === "winri") {
     overlayTitle.textContent = "Winri — tiling controller";
