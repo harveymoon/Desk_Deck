@@ -6,12 +6,12 @@ canvas:
   height: 1000
   theme: midnight
 widgets:
-  # ─── Top hotkey row — all 140×100 ───
+  # ─── Top hotkey row — all 180×100 ───
   - id: save
     type: button
     x: 40
     y: 24
-    w: 140
+    w: 180
     h: 100
     props:
       label: SAVE
@@ -19,9 +19,9 @@ widgets:
 
   - id: perform
     type: button
-    x: 200
+    x: 240
     y: 24
-    w: 140
+    w: 180
     h: 100
     props:
       label: PERFORM
@@ -29,9 +29,9 @@ widgets:
 
   - id: palette
     type: button
-    x: 360
+    x: 440
     y: 24
-    w: 140
+    w: 180
     h: 100
     props:
       label: PALETTE
@@ -39,9 +39,9 @@ widgets:
 
   - id: textport
     type: button
-    x: 520
+    x: 640
     y: 24
-    w: 140
+    w: 180
     h: 100
     props:
       label: TEXTPORT

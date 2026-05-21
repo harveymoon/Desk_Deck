@@ -190,16 +190,24 @@ async def _on_startup() -> None:
 
 
 def _on_td_rollover_par(payload: dict | None) -> None:
+    """Show / hide the rollover control widgets based on the rolled-over
+    parameter's style. Toggle pars → show the toggle button, hide the
+    slider. Numeric pars (Float / Int) → show the slider, hide the toggle.
+    Anything else (Str, RGB, XYZ, Menu, …) → hide both until we have
+    dedicated widgets for them."""
     if _loop is None:
         return
     p = ((payload or {}).get("par") or {})
     style = p.get("style")
     val = p.get("value")
 
-    # Slider gets normalized value (0..1) AND a disabled flag when the par
-    # under the mouse is a Toggle (sliders don't make sense for booleans).
-    is_toggle = (style == "Toggle")
-    if val is not None:
+    is_toggle  = (style == "Toggle")
+    is_numeric = style in ("Float", "Int")
+    no_par     = not p  # mouse isn't over any par
+
+    # Slider (td_rollover_drive)
+    slider_patch: dict = {"hidden": not is_numeric or no_par}
+    if is_numeric and val is not None:
         try:
             v = float(val) if not isinstance(val, bool) else (1.0 if val else 0.0)
         except (TypeError, ValueError):
@@ -209,21 +217,20 @@ def _on_td_rollover_par(payload: dict | None) -> None:
             nmax = float(p.get("normMax") or 1.0)
             span = nmax - nmin
             norm = 0.0 if span == 0 else max(0.0, min(1.0, (v - nmin) / span))
-            asyncio.run_coroutine_threadsafe(
-                hub.push_widget_update("td_rollover_drive",
-                                       {"value": norm, "disabled": is_toggle}),
-                _loop,
-            )
+            slider_patch["value"] = norm
+    asyncio.run_coroutine_threadsafe(
+        hub.push_widget_update("td_rollover_drive", slider_patch),
+        _loop,
+    )
 
-    # Dedicated toggle button. Reflects on/off state and label; only
-    # enabled when the par under the mouse is actually a Toggle.
-    is_on = False
-    if is_toggle:
-        is_on = bool(val) if val is not None else False
-    label = f"{p.get('name','?').upper()}: {'ON' if is_on else 'OFF'}" if is_toggle else "(not a toggle)"
+    # Toggle (td_rollover_toggle)
+    is_on = bool(val) if (is_toggle and val is not None) else False
+    label = (f"{p.get('name','?').upper()}: {'ON' if is_on else 'OFF'}"
+             if is_toggle else "(no toggle)")
     asyncio.run_coroutine_threadsafe(
         hub.push_widget_update("td_rollover_toggle",
-                               {"active": is_on, "disabled": not is_toggle, "label": label}),
+                               {"active": is_on, "hidden": not is_toggle or no_par,
+                                "label": label}),
         _loop,
     )
 
