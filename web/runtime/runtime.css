@@ -953,3 +953,109 @@ body.has-overlay .dd-sidebar { display: none; }
   background: var(--accent);
   color: var(--bg);
 }
+
+/* ─── Colour pargroup row ─── */
+.dd-pp-row-color .dd-pp-ctl,
+.dd-pp-color-ctl {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.dd-pp-color-main {
+  display: grid;
+  grid-template-columns: 38px 28px 1fr;
+  gap: 10px;
+  align-items: center;
+}
+.dd-pp-color-swatch {
+  appearance: none;
+  width: 38px;
+  height: 26px;
+  background: #888;
+  border: 1px solid var(--border);
+  padding: 0;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+.dd-pp-color-input {
+  /* Visually hidden but still clickable programmatically — the
+     swatch button forwards its click here so the native colour
+     picker opens. */
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  border: none;
+  background: none;
+  padding: 0;
+  pointer-events: none;  /* swatch handles taps; this only opens via .click() */
+}
+.dd-pp-color-expand {
+  appearance: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  height: 26px;
+  width: 28px;
+  padding: 0;
+  cursor: pointer;
+}
+.dd-pp-color-expand:hover,
+.dd-pp-row-color.is-expanded .dd-pp-color-expand {
+  color: var(--text);
+  border-color: var(--border-hi);
+}
+.dd-pp-color-hex {
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dd-pp-color-channels {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 0 2px 0;
+  border-top: 1px dashed var(--border);
+}
+.dd-pp-channel-row {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  gap: 8px;
+  align-items: center;
+}
+.dd-pp-channel-lbl {
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-align: right;
+  text-transform: uppercase;
+}
+
+/* ─── Non-color tuplet (XYZ / UV / etc.) fallback ─── */
+.dd-pp-tuplet-ctl {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.dd-pp-tuplet-channel {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  gap: 8px;
+  align-items: center;
+}
+.dd-pp-tuplet-lbl {
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-align: right;
+  text-transform: uppercase;
+}

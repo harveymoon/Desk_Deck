@@ -916,6 +916,30 @@ class DeskDeckConnector:
                 "clampMin": cmin,
                 "clampMax": cmax,
             }
+            # Tuplet info — used by the tablet to fold RGB/RGBA channel pars
+            # into a single colour-picker row (and any other tupleted group
+            # for future widgets). Only attached when size > 1; single pars
+            # render with the standard control.
+            try:
+                tsize = int(getattr(par, "tupletSize", 1) or 1)
+            except Exception:
+                tsize = 1
+            if tsize > 1:
+                tuplet = {
+                    "name":  getattr(par, "tupletName", None) or par.name,
+                    "size":  tsize,
+                    "index": int(getattr(par, "tupletIndex", 0) or 0),
+                }
+                try:
+                    pg = getattr(par, "parGroup", None)
+                    if pg is not None:
+                        pg_style = getattr(pg, "style", None)
+                        if pg_style: tuplet["style"] = pg_style
+                        pg_label = getattr(pg, "label", None)
+                        if pg_label: tuplet["label"] = pg_label
+                except Exception:
+                    pass
+                out["tuplet"] = tuplet
             if style == "Menu":
                 names  = getattr(par, "menuNames",  None) or []
                 labels = getattr(par, "menuLabels", None) or []

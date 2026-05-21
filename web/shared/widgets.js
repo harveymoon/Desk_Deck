@@ -633,8 +633,9 @@ function renderParamPanel(w, emit) {
       return;
     }
     const path = state.op ? state.op.path : "";
-    for (const par of (page.pars || [])) {
-      body.appendChild(renderParRow(par, path, state.highlight, emit));
+    const groups = groupParsByTuplet(page.pars || []);
+    for (const g of groups) {
+      body.appendChild(renderGroupRow(g, path, state.highlight, emit));
     }
   }
 
@@ -647,12 +648,12 @@ function renderParamPanel(w, emit) {
   function syncRowsInPlace() {
     const page = state.pages[state.activeIdx];
     if (!page) return;
+    const groups = groupParsByTuplet(page.pars || []);
     const rows = body.querySelectorAll(".dd-pp-row");
-    const pars = page.pars || [];
     rows.forEach((row, i) => {
-      const par = pars[i];
-      if (!par || row.dataset.par !== (par.name || "")) return;
-      if (typeof row._syncFromPar === "function") row._syncFromPar(par);
+      const g = groups[i];
+      if (!g) return;
+      if (typeof row._syncFromGroup === "function") row._syncFromGroup(g);
     });
   }
 
@@ -661,11 +662,19 @@ function renderParamPanel(w, emit) {
     const a = prev[state.activeIdx];
     const b = next[state.activeIdx];
     if (!a || !b) return false;
-    const ap = a.pars || [], bp = b.pars || [];
-    if (ap.length !== bp.length) return false;
-    for (let i = 0; i < ap.length; i++) {
-      if (ap[i].name !== bp[i].name) return false;
-      if (ap[i].style !== bp[i].style) return false;
+    const ag = groupParsByTuplet(a.pars || []);
+    const bg = groupParsByTuplet(b.pars || []);
+    if (ag.length !== bg.length) return false;
+    for (let i = 0; i < ag.length; i++) {
+      if (ag[i].name !== bg[i].name) return false;
+      if (ag[i].size !== bg[i].size) return false;
+      if (ag[i].style !== bg[i].style) return false;
+      const ap = ag[i].pars, bp = bg[i].pars;
+      if (ap.length !== bp.length) return false;
+      for (let j = 0; j < ap.length; j++) {
+        if (ap[j].name !== bp[j].name) return false;
+        if (ap[j].style !== bp[j].style) return false;
+      }
     }
     return true;
   }
@@ -715,7 +724,8 @@ function renderParamPanel(w, emit) {
     if ("highlight" in patch) {
       state.highlight = patch.highlight;
       body.querySelectorAll(".dd-pp-row").forEach((row) => {
-        row.classList.toggle("is-hot", row.dataset.par === state.highlight);
+        const names = row._parNames || [];
+        row.classList.toggle("is-hot", state.highlight != null && names.indexOf(state.highlight) >= 0);
       });
     }
     if (needTabs) renderTabs();
@@ -738,10 +748,92 @@ function renderParamPanel(w, emit) {
   return el;
 }
 
+// Collapse a flat par list into groups. Pars carrying `tuplet` info
+// (size > 1) collect into one group; everything else stays a 1-par
+// group. Order is preserved.
+function groupParsByTuplet(pars) {
+  const groups = [];
+  let cur = null;
+  for (const p of pars) {
+    const t = p.tuplet;
+    if (t && t.size > 1) {
+      if (cur && cur.name === t.name && cur.pars.length < t.size) {
+        cur.pars.push(p);
+        if (cur.pars.length === cur.size) { groups.push(cur); cur = null; }
+      } else {
+        if (cur) { groups.push(cur); }
+        cur = {
+          name:  t.name,
+          label: t.label || t.name,
+          style: t.style || null,
+          size:  t.size,
+          pars:  [p],
+        };
+        if (cur.pars.length === cur.size) { groups.push(cur); cur = null; }
+      }
+    } else {
+      if (cur) { groups.push(cur); cur = null; }
+      groups.push({
+        name:  p.name,
+        label: p.label || p.name,
+        style: p.style,
+        size:  1,
+        pars:  [p],
+      });
+    }
+  }
+  if (cur) groups.push(cur);
+  return groups;
+}
+
+// Dispatch: render one row per group. Color groups (RGB/RGBA) get
+// the specialised swatch+expand row; everything else uses the
+// per-par row (single-par groups) or a stacked fallback.
+function renderGroupRow(group, opPath, highlight, emit) {
+  const isColor = group.size >= 3 && (group.style === "RGB" || group.style === "RGBA");
+  if (isColor) return renderColorRow(group, opPath, highlight, emit);
+  if (group.size === 1) return renderParRow(group.pars[0], opPath, highlight, emit);
+  // Fallback for non-color tuplets: render N stacked single rows
+  // inside a wrapper so the structure still maps 1:1 to a "row".
+  const row = document.createElement("div");
+  row.className = "dd-pp-row dd-pp-row-tuplet";
+  row.dataset.group = group.name;
+  row._parNames = group.pars.map(p => p.name);
+  const lbl = document.createElement("div");
+  lbl.className = "dd-pp-lbl";
+  lbl.textContent = group.label;
+  row.appendChild(lbl);
+  const ctl = document.createElement("div");
+  ctl.className = "dd-pp-ctl dd-pp-tuplet-ctl";
+  const subSyncs = [];
+  for (const p of group.pars) {
+    const sub = parRowControl(p, opPath, emit);
+    const wrap = document.createElement("div");
+    wrap.className = "dd-pp-tuplet-channel";
+    const sl = document.createElement("div");
+    sl.className = "dd-pp-tuplet-lbl";
+    sl.textContent = p.label || p.name;
+    wrap.appendChild(sl);
+    wrap.appendChild(sub);
+    ctl.appendChild(wrap);
+    subSyncs.push(sub);
+  }
+  row.appendChild(ctl);
+  row._syncFromGroup = (newGroup) => {
+    newGroup.pars.forEach((np, i) => {
+      const s = subSyncs[i];
+      if (s && typeof s._syncValue === "function") s._syncValue(np);
+    });
+  };
+  return row;
+}
+
 function renderParRow(par, opPath, highlight, emit) {
   const row = document.createElement("div");
   row.className = "dd-pp-row";
   row.dataset.par = par.name || "";
+  row.dataset.group = par.name || "";
+  row._parNames = [par.name];
   if (highlight && highlight === par.name) row.classList.add("is-hot");
 
   const lbl = document.createElement("div");
@@ -755,12 +847,181 @@ function renderParRow(par, opPath, highlight, emit) {
   ctl.appendChild(control);
   row.appendChild(ctl);
 
-  // Cheap in-place value sync — used by syncRowsInPlace so we don't
-  // tear down rows mid-drag. Controls expose ._syncValue(par); if a
-  // control doesn't, the sync is a no-op (Str input never auto-syncs
-  // because the user might be typing).
+  // In-place value sync. Controls expose ._syncValue(par); if a
+  // control doesn't, the sync is a no-op. For uniformity with grouped
+  // rows the panel calls _syncFromGroup; we forward to _syncValue on
+  // the single par.
   row._syncFromPar = (newPar) => {
     if (typeof control._syncValue === "function") control._syncValue(newPar);
+  };
+  row._syncFromGroup = (g) => {
+    if (g && g.pars && g.pars[0]) row._syncFromPar(g.pars[0]);
+  };
+
+  return row;
+}
+
+// ─── Colour pargroup row ──────────────────────────────────────────
+// One row representing an RGB/RGBA pargroup. Shows the par label, a
+// tappable colour swatch (opens native HTML picker), an expand arrow
+// that reveals the underlying per-channel sliders, and a hex readout.
+function renderColorRow(group, opPath, highlight, emit) {
+  const row = document.createElement("div");
+  row.className = "dd-pp-row dd-pp-row-color";
+  row.dataset.group = group.name;
+  row._parNames = group.pars.map(p => p.name);
+  // Highlight if ANY constituent par is currently rolled-over.
+  if (highlight && group.pars.some(p => p.name === highlight)) {
+    row.classList.add("is-hot");
+  }
+
+  const lbl = document.createElement("div");
+  lbl.className = "dd-pp-lbl";
+  lbl.textContent = group.label;
+  row.appendChild(lbl);
+
+  const ctl = document.createElement("div");
+  ctl.className = "dd-pp-ctl dd-pp-color-ctl";
+
+  const top = document.createElement("div");
+  top.className = "dd-pp-color-main";
+
+  // Swatch — a button that opens a hidden native colour picker on tap.
+  const swatch = document.createElement("button");
+  swatch.type = "button";
+  swatch.className = "dd-pp-color-swatch";
+  swatch.title = "Tap to open colour picker";
+  // Hidden native input — clicking the swatch programmatically clicks
+  // the input which triggers the OS-level colour picker.
+  const picker = document.createElement("input");
+  picker.type = "color";
+  picker.className = "dd-pp-color-input";
+  picker.tabIndex = -1;
+  swatch.appendChild(picker);
+
+  // Expand arrow — reveals the per-channel sliders.
+  const expand = document.createElement("button");
+  expand.type = "button";
+  expand.className = "dd-pp-color-expand";
+  expand.textContent = "▶";
+  expand.title = "Show channel sliders";
+
+  // Hex readout (and channel value summary).
+  const hex = document.createElement("div");
+  hex.className = "dd-pp-color-hex";
+
+  top.appendChild(swatch);
+  top.appendChild(expand);
+  top.appendChild(hex);
+  ctl.appendChild(top);
+
+  // Channels sub-section — slider per channel, reuses parRowControl
+  // so each channel keeps its ladder + slider + readout.
+  const channels = document.createElement("div");
+  channels.className = "dd-pp-color-channels";
+  channels.hidden = true;
+
+  const channelControls = [];   // [{par, control}]
+  for (const par of group.pars) {
+    const sub = document.createElement("div");
+    sub.className = "dd-pp-channel-row";
+    const sl = document.createElement("div");
+    sl.className = "dd-pp-channel-lbl";
+    sl.textContent = par.label || par.name || "?";
+    sub.appendChild(sl);
+    const ctrl = parRowControl(par, opPath, emit);
+    sub.appendChild(ctrl);
+    channels.appendChild(sub);
+    channelControls.push({ par, control: ctrl });
+  }
+  ctl.appendChild(channels);
+  row.appendChild(ctl);
+
+  // ---- State + paint helpers ----
+  let currentPars = group.pars.slice();
+
+  function chanVal(i) {
+    const p = currentPars[i];
+    if (!p) return 0;
+    const v = (typeof p.value === "number") ? p.value : Number(p.value);
+    return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0;
+  }
+  function hexFromChans() {
+    const toHex = (f) => Math.round(f * 255).toString(16).padStart(2, "0").toUpperCase();
+    return "#" + toHex(chanVal(0)) + toHex(chanVal(1)) + toHex(chanVal(2));
+  }
+  function paint() {
+    const h = hexFromChans();
+    swatch.style.background = h;
+    picker.value = h;
+    // Show hex + alpha if RGBA.
+    let summary = h;
+    if (currentPars.length === 4) {
+      const a = chanVal(3);
+      summary += `  α ${a.toFixed(2)}`;
+    }
+    hex.textContent = summary;
+  }
+  paint();
+
+  // ---- Behaviour ----
+  let expanded = false;
+  function setExpanded(v) {
+    expanded = !!v;
+    channels.hidden = !expanded;
+    expand.textContent = expanded ? "▼" : "▶";
+    row.classList.toggle("is-expanded", expanded);
+  }
+
+  expand.addEventListener("click", (e) => {
+    e.preventDefault();
+    setExpanded(!expanded);
+  });
+
+  swatch.addEventListener("click", (e) => {
+    e.preventDefault();
+    // Open the OS-native picker. Some platforms need a real user
+    // gesture chain — calling .click() inside the swatch handler is
+    // the canonical way.
+    picker.click();
+  });
+
+  picker.addEventListener("input", () => sendHex(picker.value));
+  picker.addEventListener("change", () => sendHex(picker.value));
+
+  function sendHex(h) {
+    if (!h || h.length < 7) return;
+    const r = parseInt(h.slice(1, 3), 16) / 255;
+    const g = parseInt(h.slice(3, 5), 16) / 255;
+    const b = parseInt(h.slice(5, 7), 16) / 255;
+    const chans = [r, g, b];
+    for (let i = 0; i < Math.min(3, currentPars.length); i++) {
+      const p = currentPars[i];
+      emit({
+        t: "value", id: "td_pars",
+        value: chans[i],
+        payload: { path: opPath, par: p.name, style: p.style || "Float" },
+      });
+    }
+    // Optimistic local paint so the user gets instant feedback
+    // before the TD round-trip lands.
+    for (let i = 0; i < Math.min(3, currentPars.length); i++) {
+      currentPars[i] = Object.assign({}, currentPars[i], { value: chans[i] });
+    }
+    paint();
+  }
+
+  // ---- In-place sync (called by syncRowsInPlace on server re-emit) ----
+  row._syncFromGroup = (newGroup) => {
+    currentPars = newGroup.pars.slice();
+    paint();
+    // Forward each channel's new value into its slider control so the
+    // expanded view stays in sync too — _syncValue inside the slider
+    // skips itself if a drag is active.
+    newGroup.pars.forEach((np, i) => {
+      const cc = channelControls[i];
+      if (cc && typeof cc.control._syncValue === "function") cc.control._syncValue(np);
+    });
   };
 
   return row;
