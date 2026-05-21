@@ -96,6 +96,42 @@ diffs each enabled kind and only sends when it changes:
 | `pane_path`   | `ui.panes[0].owner.path` changes                 |
 | `perf`        | `app.cookRate` / `project.cookTime` / GPU mem change |
 
+## Debug helpers
+
+Three textport-callable methods if something isn't flowing:
+
+```python
+op('Desk_Deck').Status()
+# Dumps: ws status, current server subscriptions, rx/tx/emit/tick
+# counters, and the last cached value for each state kind.
+
+op('Desk_Deck').DumpWsParams()
+# Lists every parameter on the ws DAT with its current value —
+# useful when troubleshooting netaddress/port/url field names.
+
+op('Desk_Deck').ForceSubscribeAll()
+# Pretends the server told us to stream everything (selected,
+# rollover_par, rollover_op, perf, pane_path). Use to test that
+# Tick() actually fires before debugging the server-side subscribe
+# path. After this, Tick() should start emitting on the next call.
+```
+
+The connector also auto-logs:
+
+- Every `OnRx` cmd (with shortened arg summary)
+- Every subscribe/unsubscribe change
+- Every state emit (one line per change)
+- A heartbeat every ~60 ticks (`tick #N  subs=...  rx=N tx=N emit=N`)
+
+If `Status()` shows `subs=(none)` after the tablet has TouchDesigner
+focused → the server isn't sending `subscribe` cmds (either no
+provider is bound to a textbox, or the WS broke).
+
+If `subs={...}` is populated but counters never grow → `frame_tick`
+isn't actually calling `Tick()`. Sanity check by typing
+`op('Desk_Deck').Tick()` in the textport — should bump tick counter
+and emit a state line.
+
 ## Registering macros
 
 In any TD Python script (run once, e.g. in `Execute DAT.onStart`):

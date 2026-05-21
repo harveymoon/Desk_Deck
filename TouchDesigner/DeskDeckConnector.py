@@ -55,6 +55,12 @@ class DeskDeckConnector:
         # commands look up here.
         self._macros = {}
 
+        # Debug counters / rate-limit.
+        self._stats = {"tick": 0, "rx": 0, "tx": 0, "emit": 0}
+        self._tick_log_every = 60       # ~once every 60 ticks = ~6s at 10Hz
+        self._rx_verbose_until = 5      # print full payload for the first N rx messages
+        self._last_status_print = 0
+
     # ─────────── connection lifecycle ───────────
 
     def Connect(self):
@@ -142,6 +148,7 @@ class DeskDeckConnector:
 
     def OnConnect(self):
         """Called by ws_callbacks.onConnect."""
+        self._dbg("OnConnect — sending hello")
         self._send({
             "t":          "hello",
             "device":     "touchdesigner",
@@ -151,16 +158,25 @@ class DeskDeckConnector:
 
     def OnDisconnect(self):
         self._subs.clear()
-        self._dbg("OnDisconnect")
+        # Force-reset diff caches so state re-emits on reconnect.
+        self._last_selected = None
+        self._last_rollover_op = None
+        self._last_rollover_par = None
+        self._last_pane_path = None
+        self._last_perf = None
+        self._dbg("OnDisconnect — cleared subs and diff caches")
 
     # ─────────── inbound: server → TD ───────────
 
     def OnRx(self, txt):
         """Called by ws_callbacks.onReceiveText for every inbound text frame."""
+        self._stats["rx"] += 1
+        if self._stats["rx"] <= self._rx_verbose_until:
+            self._dbg(f"OnRx#{self._stats['rx']} (raw): {txt[:200]}")
         try:
             msg = json.loads(txt)
         except Exception as e:
-            self._dbg(f"OnRx: bad json: {e}")
+            self._dbg(f"OnRx: bad json: {e}  raw={txt[:200]!r}")
             return
         if msg.get("t") != "cmd":
             return  # ignore hello / ack / unknown
@@ -168,14 +184,30 @@ class DeskDeckConnector:
         cid  = msg.get("id")
         handler = getattr(self, f"_handle_{kind}", None)
         if not handler:
+            self._dbg(f"OnRx: unknown cmd kind {kind!r}")
             self._ack(cid, False, f"unknown cmd kind {kind!r}")
             return
         try:
             handler(msg)
+            self._dbg(f"OnRx cmd ok: {kind}  {self._short_args(msg)}")
             self._ack(cid, True)
         except Exception as e:
-            self._dbg(f"_handle_{kind} raised: {e}")
+            self._dbg(f"OnRx cmd FAILED: {kind} {self._short_args(msg)}  → {e}")
             self._ack(cid, False, str(e))
+
+    def _short_args(self, msg):
+        # Render a one-line summary of the interesting fields of an inbound cmd.
+        keys = [k for k in msg if k not in ("t", "id", "kind")]
+        bits = []
+        for k in keys:
+            v = msg[k]
+            if isinstance(v, dict):
+                v = "{...}"
+            sv = repr(v)
+            if len(sv) > 60:
+                sv = sv[:57] + "...'"
+            bits.append(f"{k}={sv}")
+        return " ".join(bits)
 
     def _handle_set_par(self, msg):
         op_ = op(msg["path"])
@@ -206,26 +238,36 @@ class DeskDeckConnector:
 
     def _handle_subscribe(self, msg):
         what = msg.get("what")
-        if what:
-            self._subs.add(what)
-            # Force a fresh emit on next tick by clearing the relevant cache.
-            if   what == "selected":     self._last_selected     = None
-            elif what == "rollover_par": self._last_rollover_par = None
-            elif what == "rollover_op":  self._last_rollover_op  = None
-            elif what == "pane_path":    self._last_pane_path    = None
-            elif what == "perf":         self._last_perf         = None
+        if not what:
+            return
+        was_in = what in self._subs
+        self._subs.add(what)
+        # Force a fresh emit on next tick by clearing the relevant cache.
+        if   what == "selected":     self._last_selected     = None
+        elif what == "rollover_par": self._last_rollover_par = None
+        elif what == "rollover_op":  self._last_rollover_op  = None
+        elif what == "pane_path":    self._last_pane_path    = None
+        elif what == "perf":         self._last_perf         = None
+        if not was_in:
+            self._dbg(f"subscribed: {what}  now={sorted(self._subs)}")
 
     def _handle_unsubscribe(self, msg):
         what = msg.get("what")
-        if what:
+        if not what:
+            return
+        if what in self._subs:
             self._subs.discard(what)
+            self._dbg(f"unsubscribed: {what}  now={sorted(self._subs)}")
 
     # ─────────── outbound tick: TD → server ───────────
 
     def Tick(self):
         """Called every N frames by frame_tick.onFrameEnd. Diffs each enabled
         state kind and emits only when it changed."""
+        self._stats["tick"] += 1
         if not self._is_open():
+            if self._stats["tick"] % self._tick_log_every == 0:
+                self._dbg(f"tick #{self._stats['tick']} — ws not open")
             return
 
         if "selected" in self._subs:
@@ -240,6 +282,12 @@ class DeskDeckConnector:
         # Always flush log buffer (server filters by subscriber list).
         self._flush_log()
 
+        # Heartbeat so the textport shows we're alive without being too noisy.
+        if self._stats["tick"] % self._tick_log_every == 0:
+            self._dbg(f"tick #{self._stats['tick']}  "
+                      f"subs={sorted(self._subs) or 'none'}  "
+                      f"rx={self._stats['rx']} tx={self._stats['tx']} emit={self._stats['emit']}")
+
     def _diff_selected(self):
         try:
             ops = ui.panes[0].selected or []
@@ -249,6 +297,8 @@ class DeskDeckConnector:
         if paths == self._last_selected:
             return
         self._last_selected = paths
+        self._stats["emit"] += 1
+        self._dbg(f"emit state.selected ({len(paths)} op(s): {list(paths)[:3]}{'...' if len(paths)>3 else ''})")
         self._send({
             "t": "state", "kind": "selected",
             "ops": [self._op_brief(o) for o in ops if o is not None],
@@ -267,6 +317,8 @@ class DeskDeckConnector:
         ro_op_path = ro_op.path if ro_op is not None else None
         if ro_op_path != self._last_rollover_op:
             self._last_rollover_op = ro_op_path
+            self._stats["emit"] += 1
+            self._dbg(f"emit state.rollover_op ({ro_op_path or 'none'})")
             self._send({
                 "t": "state", "kind": "rollover_op",
                 "op": self._op_brief(ro_op) if ro_op is not None else None,
@@ -282,6 +334,8 @@ class DeskDeckConnector:
             sig = (ro_par.owner.path, ro_par.name, v)
         if sig != self._last_rollover_par:
             self._last_rollover_par = sig
+            self._stats["emit"] += 1
+            self._dbg(f"emit state.rollover_par ({sig[0] + '.' + sig[1] if sig else 'none'} = {sig[2] if sig else ''})")
             self._send({
                 "t": "state", "kind": "rollover_par",
                 "op":  self._op_brief(ro_par.owner) if ro_par is not None else None,
@@ -386,11 +440,65 @@ class DeskDeckConnector:
     def _send(self, payload):
         ws = op("ws")
         if ws is None:
+            self._dbg("_send: no ws DAT")
             return
         try:
             ws.sendText(json.dumps(payload))
+            self._stats["tx"] += 1
         except Exception as e:
             self._dbg(f"_send failed: {e}")
+
+    # ─────────── public diagnostics (call from the textport) ───────────
+
+    def Status(self):
+        """Dump a one-shot summary to the textport.
+
+        Call:  op('Desk_Deck').Status()
+        """
+        ws = op("ws")
+        ws_active = bool(ws and ws.par.active.eval()) if ws is not None else False
+        print()
+        print("[DeskDeck Status] ──────────────────────────────────────")
+        print(f"  ws DAT present:    {ws is not None}")
+        print(f"  ws active:         {ws_active}")
+        print(f"  server subscribed: {sorted(self._subs) or '(none — server hasn\\'t asked)'}")
+        print(f"  stats:             rx={self._stats['rx']} tx={self._stats['tx']} "
+              f"emit={self._stats['emit']} tick={self._stats['tick']}")
+        print(f"  last selected:     {self._last_selected}")
+        print(f"  last rollover_op:  {self._last_rollover_op}")
+        print(f"  last rollover_par: {self._last_rollover_par}")
+        print(f"  last pane_path:    {self._last_pane_path}")
+        print(f"  last perf:         {self._last_perf}")
+        print(f"  macros:            {sorted(self._macros)}")
+        print("[DeskDeck Status] ──────────────────────────────────────")
+        print()
+
+    def DumpWsParams(self):
+        """List every parameter on the ws DAT — useful when the user's TD
+        build exposes different names than we expect."""
+        ws = op("ws")
+        if ws is None:
+            print("[DeskDeck] no ws DAT")
+            return
+        print(f"[DeskDeck] {ws.path} parameters:")
+        for p in ws.pars():
+            try:
+                print(f"  {p.name:20s} = {p.eval()!r}")
+            except Exception as e:
+                print(f"  {p.name:20s} <eval error: {e}>")
+
+    def ForceSubscribeAll(self):
+        """For local testing without the server: pretend the server told us
+        to stream every kind. Call once, then Tick() will emit state
+        snapshots even before the server's `subscribe` cmd arrives."""
+        for k in ("selected", "rollover_op", "rollover_par", "perf", "pane_path"):
+            self._subs.add(k)
+        self._last_selected = None
+        self._last_rollover_op = None
+        self._last_rollover_par = None
+        self._last_pane_path = None
+        self._last_perf = None
+        self._dbg(f"ForceSubscribeAll → subs={sorted(self._subs)}")
 
     def _ack(self, cid, ok, error=None):
         if cid is None:
