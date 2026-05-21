@@ -284,7 +284,14 @@ html, body {
   letter-spacing: 0.1em;
   overflow: visible;
   position: absolute;
+  /* Suppress every form of platform default that a long-press would
+     otherwise trigger on touch devices: context menu, text selection,
+     image-style preview, scrolling. We need pointermove all to ourselves. */
   -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: none;
 }
 .dd-value-ladder.is-active,
 .dd-value-ladder:active {

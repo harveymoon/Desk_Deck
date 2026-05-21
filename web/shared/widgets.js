@@ -484,6 +484,12 @@ function renderValueLadder(w, emit) {
     }
   }
 
+  // Block long-press context menu (Android Chrome shows text-selection /
+  // "Open in new tab" by default on a held button).
+  el.addEventListener("contextmenu", (e) => e.preventDefault());
+  // Block the text-select callout that fires on iOS long-press.
+  el.addEventListener("selectstart", (e) => e.preventDefault());
+
   el.addEventListener("pointerdown", (e) => {
     e.preventDefault();
     dragging = true;
