@@ -1,12 +1,32 @@
-"""Built-in action dispatchers."""
+"""Action dispatcher.
+
+The dispatch table is mutable. Built-in (core) handlers register
+themselves at the bottom of this module via register_action(). Plugins
+(server/providers/*.py) register their own via the api object passed
+to their register(api) hook — see server/registry.py and ARCHITECTURE.md.
+
+Never hard-code integration-specific handlers in this file. If it has
+a prefix (td_*, resolume_*, ableton_*, ...) it belongs in that plugin's
+provider module.
+"""
 from __future__ import annotations
 
 import subprocess
-from typing import Any
+from typing import Any, Callable
 
 import keyboard
 
-from . import desktops, registry, td
+from . import desktops, registry
+
+
+_HANDLERS: dict[str, Callable] = {}
+
+
+def register_action(type_name: str, fn: Callable) -> None:
+    """Add (or replace) an action handler. Called by plugins via
+    api.register_action() and by core handlers at the bottom of this
+    module."""
+    _HANDLERS[type_name] = fn
 
 
 def dispatch(action: dict[str, Any] | None, payload: dict[str, Any] | None = None,
@@ -119,211 +139,14 @@ def _chrome_tab(action: dict[str, Any], payload: dict[str, Any], context: dict, 
         _focus_window({"hwnd": hwnd}, {}, context, widget)
 
 
-def _rollover_par() -> tuple[dict, dict] | None:
-    """Return (op_brief, par_snapshot) for the par currently under the
-    mouse in TD, or None if nothing is hovered or what's hovered isn't a
-    single par (could be a pargroup / page / op / panel)."""
-    ro = td.state("rollover") or {}
-    if ro.get("kind_of") != "par":
-        return None
-    op_ = ro.get("op") or {}
-    par = ro.get("par") or {}
-    if not op_.get("path") or not par.get("name"):
-        return None
-    return (op_, par)
-
-
-def _td_set_par(action: dict[str, Any], payload: dict[str, Any], context: dict, widget: dict) -> None:
-    """Push a parameter value into TouchDesigner.
-
-    action = { type: "td_set_par", path: "/proj/noise1", par: "amp" }
-    payload may carry { "value": ... } from a slider; otherwise action.value is used.
-
-    If payload.nudge is set (e.g. from an inline value-ladder in the
-    param panel), routes to _td_nudge_par instead so the value is
-    treated as a delta to add to the par's current value.
-
-    Sentinel: path / par == "$rollover" → resolve at dispatch time from
-    td.state("rollover") (kind_of=="par") so the widget always drives
-    whatever's under the mouse RIGHT NOW. The slider runs in real par
-    units (the server retunes its min/max/step on every rollover change),
-    so the incoming value is the literal value to push — Int still gets
-    rounded, Toggle gets a 0.5 threshold for safety in case something
-    bool-ish drives in.
-    """
-    # Ladder nudges piggy-back the same widget value channel; redirect.
-    if payload and payload.get("nudge"):
-        return _td_nudge_par(action, payload, context, widget)
-    # payload-level path/par win over action-level so a smart widget
-    # (e.g. the param panel) can target any par on the fly without the
-    # YAML having to template per-row actions.
-    path = (payload.get("path") if payload else None) or action.get("path") or ""
-    par  = (payload.get("par")  if payload else None) or action.get("par")  or ""
-    style = (payload.get("style") if payload else None) or None
-    if path == "$rollover" or par == "$rollover":
-        ro = _rollover_par()
-        if ro is None:
-            print("[actions] td_set_par: $rollover unresolved (nothing under mouse, or not a Par)", flush=True)
-            return
-        op_, p = ro
-        if path == "$rollover":
-            path = op_["path"]
-        if par == "$rollover":
-            par = p["name"]
-        style = p.get("style")
-    value = payload.get("value") if payload and "value" in payload else action.get("value")
-    if value is None:
-        return
-    if style == "Int":
-        try: value = int(round(float(value)))
-        except (TypeError, ValueError): pass
-    elif style == "Toggle":
-        try: value = bool(float(value) >= 0.5)
-        except (TypeError, ValueError): pass
-    td.send_cmd("set_par", path=path, par=par, value=value)
-
-
-def _td_macro(action: dict[str, Any], payload: dict[str, Any], context: dict, widget: dict) -> None:
-    name = action.get("name")
-    if not name:
-        return
-    td.send_cmd("macro", name=name, args=action.get("args") or {})
-
-
-def _td_nudge_par(action: dict[str, Any], payload: dict[str, Any], context: dict, widget: dict) -> None:
-    """Increment a parameter by a signed delta (value-ladder UX).
-
-    payload.value carries the delta. path/par can come from action OR
-    payload (payload wins, same as td_set_par). Three resolution paths:
-
-      1. Explicit path+par from payload (param-panel ladder rows) —
-         current value looked up in td.state('selected').pages.
-      2. $rollover sentinel — current value from rollover state.
-      3. Implicit (no path/par) — same as $rollover.
-
-    Honours Int by rounding. Falls back gracefully if the par isn't
-    found in any state cache — the delta is sent as a new par.val
-    instead of as an absolute (last resort, may overshoot)."""
-    # payload-level path/par win over action-level so the per-row
-    # ladder buttons in the param panel can target any par on the fly.
-    path  = (payload.get("path")  if payload else None) or action.get("path") or ""
-    par   = (payload.get("par")   if payload else None) or action.get("par")  or ""
-    style = (payload.get("style") if payload else None) or None
-
-    delta = None
-    if payload and "value" in payload:
-        delta = payload["value"]
-    elif "value" in action:
-        delta = action["value"]
-    try:
-        delta = float(delta)
-    except (TypeError, ValueError):
-        return
-    if delta == 0:
-        return
-
-    cur_val = None
-    # Resolution 1: $rollover sentinel or unset → rollover state.
-    if (not path) or (not par) or path == "$rollover" or par == "$rollover":
-        ro = _rollover_par()
-        if ro is None:
-            return
-        op_, p_meta = ro
-        if not path or path == "$rollover":
-            path = op_["path"]
-        if not par or par == "$rollover":
-            par = p_meta["name"]
-        cur_val = p_meta.get("value")
-        style = style or p_meta.get("style")
-    else:
-        # Resolution 2: explicit path/par → look up in the selected-op
-        # cache. The param panel is fed from this same state, so the
-        # value here matches what the user sees on the tablet.
-        sel = td.state("selected") or {}
-        for page in (sel.get("pages") or []):
-            for p in (page.get("pars") or []):
-                if p.get("name") == par:
-                    cur_val = p.get("value")
-                    style = style or p.get("style")
-                    break
-            if cur_val is not None:
-                break
-
-    if cur_val is None:
-        # Fall back: ship the delta as the new value. Better than dropping.
-        print(f"[actions] td_nudge_par: no cached current value for {path}.{par} — sending raw delta", flush=True)
-        cur_val = 0
-    try:
-        new_val = float(cur_val) + delta
-    except (TypeError, ValueError):
-        return
-    if style == "Int":
-        new_val = int(round(new_val))
-    td.send_cmd("set_par", path=path, par=par, value=new_val)
-
-
-def _td_toggle_par(action: dict[str, Any], payload: dict[str, Any], context: dict, widget: dict) -> None:
-    """Flip a Toggle-style parameter. With no `path`/`par`, targets the
-    parameter currently under the mouse in TD (kind_of=='par')."""
-    path = action.get("path") or ""
-    par = action.get("par") or ""
-    cur_val = None
-    if not path or not par or path == "$rollover" or par == "$rollover":
-        ro = _rollover_par()
-        if ro is None:
-            print("[actions] td_toggle_par: nothing single-par under mouse to toggle", flush=True)
-            return
-        op_, p = ro
-        path = op_["path"] if not path or path == "$rollover" else path
-        par = p["name"] if not par or par == "$rollover" else par
-        cur_val = p.get("value")
-    new_val = not bool(cur_val)
-    td.send_cmd("set_par", path=path, par=par, value=new_val)
-
-
-def _td_open_help(action: dict[str, Any], payload: dict[str, Any], context: dict, widget: dict) -> None:
-    """Open the docs.derivative.ca page for the op currently under the
-    mouse — falls back to the selected op when nothing is hovered."""
-    import webbrowser
-    # Prefer the rollover op (par/pargroup/page/op/panel all carry an op
-    # brief). Falls back to whatever is selected in the network pane.
-    o = None
-    ro = td.state("rollover") or {}
-    if ro.get("kind_of") in ("par", "pargroup", "page", "op", "panel"):
-        o = ro.get("op")
-    if not o:
-        sel = td.state("selected") or {}
-        ops = sel.get("ops") or []
-        if ops:
-            o = ops[0]
-    if not o:
-        print("[actions] td_open_help: nothing hovered or selected", flush=True)
-        return
-    op_type = o.get("type") or ""
-    family = o.get("family") or ""
-    if not op_type or not family or not op_type.endswith(family):
-        print(f"[actions] td_open_help: bad op type {op_type!r} family {family!r}", flush=True)
-        return
-    head = op_type[: -len(family)]
-    slug = f"{head[:1].upper()}{head[1:]}_{family.upper()}"
-    url = f"https://docs.derivative.ca/{slug}"
-    if action.get("python"):
-        url += "_Class"
-    print(f"[actions] td_open_help → {url}", flush=True)
-    webbrowser.open(url)
-
-
-_HANDLERS = {
-    "hotkey": _hotkey,
-    "command": _command,
-    "launch": _launch,
-    "focus_window": _focus_window,
-    "switch_desktop": _switch_desktop,
-    "python": _python,
-    "chrome_tab": _chrome_tab,
-    "td_set_par": _td_set_par,
-    "td_nudge_par": _td_nudge_par,
-    "td_macro": _td_macro,
-    "td_toggle_par": _td_toggle_par,
-    "td_open_help": _td_open_help,
-}
+# ─── core action registrations ────────────────────────────────────
+# Generic handlers that ship with the core. Integration-specific
+# handlers (td_*, resolume_*, ...) live in their respective provider
+# modules and self-register via api.register_action().
+register_action("hotkey",         _hotkey)
+register_action("command",        _command)
+register_action("launch",         _launch)
+register_action("focus_window",   _focus_window)
+register_action("switch_desktop", _switch_desktop)
+register_action("python",         _python)
+register_action("chrome_tab",     _chrome_tab)

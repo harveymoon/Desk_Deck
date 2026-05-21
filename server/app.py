@@ -23,7 +23,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import actions, auth, chrome, config, desktops, dynamic, filters, log_buffer, registry, sidebar, td, themes, watcher, winri
+from . import actions, auth, chrome, config, desktops, devices, dynamic, filters, log_buffer, registry, sidebar, themes, watcher, winri
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
@@ -181,174 +181,19 @@ async def _on_startup() -> None:
     _window_poll_task = asyncio.create_task(_poll_window_changes())
     _desktop_poll_task = asyncio.create_task(_poll_desktop_changes())
 
-    # When TD reports a new "thing under the mouse" (par / pargroup / page
-    # / op / panel), drive the rollover-control widgets accordingly. Only
-    # par hovers show the slider/ladder/toggle right now; other kinds
-    # leave them hidden until we add dedicated widgets.
-    td.subscribe("rollover", _on_td_rollover)
-    # Selection changes push the whole op's pages/pars to td_pars so the
-    # tablet's param panel can render an editable view of every par on
-    # the first selected op.
-    td.subscribe("selected", _on_td_selected)
-    # Rollover identity changes also highlight the matching row in the
-    # param panel — only when the hovered par lives on the selected op.
-    td.subscribe("rollover", _on_td_rollover_for_highlight)
+    # Run every plugin-registered startup hook now that the asyncio
+    # loop is up and registry.reload() has imported all providers.
+    # Plugins (server/providers/*.py) opt in by calling
+    # api.register_startup_hook(fn) inside their register(api) function.
+    for hook in registry.take_startup_hooks():
+        try:
+            result = hook(_loop)
+            if asyncio.iscoroutine(result):
+                await result
+        except Exception as e:
+            print(f"[startup] plugin hook raised: {e}", flush=True)
 
     print("[startup] watcher + hot-reload + window/desktop pollers running", flush=True)
-
-
-def _on_td_rollover(payload: dict | None) -> None:
-    """Show / hide the rollover control widgets based on what's under the
-    mouse in TD. Single-par hovers drive the slider / ladder / toggle.
-    Anything else (pargroup, page, op, panel, nothing) hides them — they
-    will get their own widgets when we add picker / page-tab / etc.
-    """
-    if _loop is None:
-        return
-    kind_of = (payload or {}).get("kind_of") or "none"
-    is_par_hover = (kind_of == "par")
-    p = ((payload or {}).get("par") or {}) if is_par_hover else {}
-    style = p.get("style")
-    val = p.get("value")
-
-    is_toggle  = is_par_hover and (style == "Toggle")
-    is_numeric = is_par_hover and (style in ("Float", "Int"))
-    no_par     = not is_par_hover  # mouse isn't over a single par
-
-    # Value ladder: hidden unless we have a numeric par to nudge.
-    asyncio.run_coroutine_threadsafe(
-        hub.push_widget_update("td_rollover_ladder",
-                               {"hidden": not is_numeric or no_par}),
-        _loop,
-    )
-
-    # Slider (td_rollover_drive) — runs in REAL par-units, not 0..1.
-    # Retune the slider's min/max/step/label to match the par so the
-    # displayed value next to the bar is literally par.eval() and the
-    # outgoing drag value is sent straight to TD (no normalisation).
-    slider_patch: dict = {"hidden": not is_numeric or no_par}
-    if is_numeric and val is not None:
-        try:
-            v = float(val) if not isinstance(val, bool) else (1.0 if val else 0.0)
-        except (TypeError, ValueError):
-            v = None
-        if v is not None:
-            nmin = float(p.get("normMin") or 0.0)
-            nmax = float(p.get("normMax") or 1.0)
-            if nmax <= nmin:                    # degenerate range → fall back
-                nmin, nmax = (v - 1.0, v + 1.0) if v else (0.0, 1.0)
-            # normMin/normMax are TD's *soft* UI range. The actual par
-            # value is free to live outside it (e.g. trail.wlength=60 with
-            # normMax=10). Expand the slider range so the thumb lands at
-            # the real value's position — preserves the natural UI range
-            # when the value is inside it, and grows on demand when it
-            # isn't. Hard clamps (clampMin/clampMax) still cap the range.
-            lo = min(nmin, v)
-            hi = max(nmax, v)
-            cmin = p.get("clampMin"); cmax = p.get("clampMax")
-            if cmin is not None:
-                try: lo = max(lo, float(cmin))
-                except (TypeError, ValueError): pass
-            if cmax is not None:
-                try: hi = min(hi, float(cmax))
-                except (TypeError, ValueError): pass
-            if hi <= lo:                        # safety guard after clamping
-                hi = lo + max(abs(lo) * 0.01, 1.0)
-            span = hi - lo
-            if p.get("style") == "Int":
-                step = 1
-            else:
-                # ~1000 steps across the range, snapped to a clean power
-                # of ten so the readout shows tidy decimals.
-                import math as _math
-                raw = span / 1000.0
-                exp = _math.floor(_math.log10(raw)) if raw > 0 else -3
-                step = max(10 ** exp, 1e-4)
-            label = (p.get("name") or "VAL").upper()
-            slider_patch.update({
-                "min":   lo,
-                "max":   hi,
-                "step":  step,
-                "label": label,
-                "value": v,
-            })
-    asyncio.run_coroutine_threadsafe(
-        hub.push_widget_update("td_rollover_drive", slider_patch),
-        _loop,
-    )
-
-    # Toggle (td_rollover_toggle)
-    is_on = bool(val) if (is_toggle and val is not None) else False
-    label = (f"{p.get('name','?').upper()}: {'ON' if is_on else 'OFF'}"
-             if is_toggle else "(no toggle)")
-    asyncio.run_coroutine_threadsafe(
-        hub.push_widget_update("td_rollover_toggle",
-                               {"active": is_on, "hidden": not is_toggle or no_par,
-                                "label": label}),
-        _loop,
-    )
-
-
-def _on_td_selected(payload: dict | None) -> None:
-    """Push a fresh op_path + pages snapshot to the td_pars param panel
-    whenever TD reports a new selection (or a re-emit after a tablet
-    edit). Hides the panel when nothing is selected."""
-    if _loop is None:
-        return
-    ops = ((payload or {}).get("ops") or [])
-    pages = ((payload or {}).get("pages") or [])
-    if not ops:
-        asyncio.run_coroutine_threadsafe(
-            hub.push_widget_update("td_pars", {"op": None, "pages": [], "hidden": False}),
-            _loop,
-        )
-        return
-    # Diagnostic: first page's par names + styles + tuplet info, so
-    # we can verify why colour-group folding does/doesn't trigger.
-    if pages:
-        first = pages[0]
-        summary = []
-        for p in (first.get("pars") or [])[:8]:
-            bits = f"{p.get('name')}({p.get('style')})"
-            t = p.get("tuplet")
-            if t: bits += f"[tup={t.get('name')}/{t.get('size')}/{t.get('style')}]"
-            summary.append(bits)
-        print(f"[td_pars] {ops[0].get('path')} page='{first.get('name')}': {', '.join(summary)}", flush=True)
-    asyncio.run_coroutine_threadsafe(
-        hub.push_widget_update("td_pars", {
-            "op": ops[0],
-            "pages": pages,
-            "hidden": False,
-        }),
-        _loop,
-    )
-
-
-def _on_td_rollover_for_highlight(payload: dict | None) -> None:
-    """Highlight the par-panel row corresponding to the par under the
-    mouse, but only when it lives on the currently-displayed op."""
-    if _loop is None:
-        return
-    if (payload or {}).get("kind_of") != "par":
-        # Clear the highlight when the hover leaves a par.
-        asyncio.run_coroutine_threadsafe(
-            hub.push_widget_update("td_pars", {"highlight": None}),
-            _loop,
-        )
-        return
-    op_ = (payload.get("op") or {})
-    par = (payload.get("par") or {})
-    sel = td.state("selected") or {}
-    sel_ops = sel.get("ops") or []
-    sel_path = sel_ops[0].get("path") if sel_ops else None
-    if not sel_path or sel_path != op_.get("path"):
-        # Hovered par lives on a different op — don't touch the panel.
-        return
-    asyncio.run_coroutine_threadsafe(
-        hub.push_widget_update("td_pars", {"highlight": par.get("name")}),
-        _loop,
-    )
-
 
 @app.on_event("shutdown")
 async def _on_shutdown() -> None:
@@ -973,11 +818,13 @@ async def live(ws: WebSocket) -> None:
     await ws.accept()
     await hub.add(ws, device=device)
 
-    # TouchDesigner client: route inbound JSON to td.on_message; skip
-    # layout/theme/desktops bootstrap (TD doesn't render those).
-    if device == "touchdesigner":
-        td.register_ws(ws, asyncio.get_running_loop())
-        td.resync_subscriptions()
+    # Plugin device clients (touchdesigner, future: resolume, ableton, ...).
+    # Dispatched through server.devices — handlers register themselves via
+    # the plugin's register(api) hook. Layout/theme bootstrap is skipped
+    # for these connections; the plugin owns the protocol.
+    if device != "tablet" and devices.has(device):
+        loop = asyncio.get_running_loop()
+        await devices.dispatch_open(device, ws, loop)
         try:
             while True:
                 raw = await ws.receive_text()
@@ -985,11 +832,11 @@ async def live(ws: WebSocket) -> None:
                     msg = json.loads(raw)
                 except json.JSONDecodeError:
                     continue
-                await td.on_message(msg)
+                await devices.dispatch_message(device, ws, msg, loop)
         except WebSocketDisconnect:
             pass
         finally:
-            td.unregister_ws(ws)
+            await devices.dispatch_close(device, ws, loop)
             await hub.remove(ws)
         return
 

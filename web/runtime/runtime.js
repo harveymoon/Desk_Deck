@@ -4,6 +4,12 @@ import { renderWidget, updateWidget } from "/shared/widgets.js";
 import { connect } from "/shared/ws.js";
 import { applyTheme, DEFAULT_THEME } from "/shared/theme.js";
 
+// Client-side plugin bundles. Each module side-effect-registers its
+// renderers + updaters via widgets.js's registerRenderer / registerUpdater.
+// Add a line here when a new integration ships a widgets-<name>.js bundle.
+// See ARCHITECTURE.md.
+import "/shared/widgets-td.js";
+
 const TOKEN_KEY = "dd.token";
 
 function resolveToken() {

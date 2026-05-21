@@ -23,6 +23,21 @@ exposes three slide-out overlays:
 
 No app install. No App Store. The tablet just opens a URL.
 
+## Plugins
+
+Integrations (TouchDesigner, future Resolume / Ableton / etc.) are
+plugins. The core stays generic; each integration drops in a
+`server/providers/<name>.py` module (which registers actions, WS device
+handlers, and startup hooks via a small API) and optionally a
+`web/shared/widgets-<name>.js` bundle (which calls `registerRenderer`
+to add custom widget types).
+
+**Never add integration-specific code to the core** (`server/app.py`,
+`server/actions.py`, `web/shared/widgets.js`). See
+[`ARCHITECTURE.md`](ARCHITECTURE.md) for the plugin contract and
+`server/providers/td_integration.py` + `web/shared/widgets-td.js` as
+the reference example.
+
 ---
 
 ## Why
