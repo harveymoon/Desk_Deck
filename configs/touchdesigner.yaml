@@ -21,31 +21,11 @@ widgets:
     type: button
     x: 40
     y: 64
-    w: 240
-    h: 140
+    w: 140
+    h: 100
     props:
       label: SAVE
       action: { type: hotkey, keys: ctrl+s }
-
-  - id: play
-    type: button
-    x: 296
-    y: 64
-    w: 240
-    h: 140
-    props:
-      label: PLAY
-      action: { type: hotkey, keys: F1 }
-
-  - id: pause
-    type: button
-    x: 552
-    y: 64
-    w: 240
-    h: 140
-    props:
-      label: PAUSE
-      action: { type: hotkey, keys: F2 }
 
   - id: perform
     type: button
@@ -57,14 +37,14 @@ widgets:
       label: PERFORM
       action: { type: hotkey, keys: F11 }
 
-  - id: snippet
+  - id: palette
     type: button
     x: 296
     y: 220
     w: 240
     h: 140
     props:
-      label: SNIPPETS
+      label: PALETTE
       action: { type: hotkey, keys: ctrl+shift+s }
 
   - id: textport
