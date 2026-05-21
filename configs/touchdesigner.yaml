@@ -104,26 +104,15 @@ widgets:
       label: PY
       action: { type: td_open_help, python: true }
 
-  # Rollover one-liner (parameter / pargroup / page / op under the mouse).
-  - id: td_rollover
-    type: textbox
-    x: 848
-    y: 184
-    w: 720
-    h: 40
-    props:
-      monospace: true
-      max_lines: 1
-      source: td_rollover
-
   # Live par editor for whatever op is selected in TD. Pages render as
   # tabs, every par becomes an editable row. Mousing over a par in TD
-  # highlights its row here.
+  # highlights its row here (no separate rollover text widget — the
+  # row's accent stripe is enough).
   - id: td_pars
     type: param_panel
     x: 848
-    y: 236
+    y: 184
     w: 720
-    h: 740
+    h: 792
     props:
       action: { type: td_set_par }
