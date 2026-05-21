@@ -455,6 +455,70 @@ button.danger:hover { background: var(--danger); color: var(--bg); border-color:
   line-height: 1.5;
 }
 
+/* Sidebar editor rows */
+.dd-ed-sb-list {
+  display: flex; flex-direction: column;
+  padding: 8px 6px;
+}
+.dd-ed-sb-row {
+  display: flex; align-items: stretch;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.dd-ed-sb-row:last-child { border-bottom: none; }
+.dd-ed-sb-reorder {
+  display: flex; flex-direction: column;
+  gap: 4px;
+}
+.dd-ed-sb-reorder button {
+  width: 28px; padding: 0; min-height: 22px;
+  font-size: 14px;
+}
+.dd-ed-sb-preview {
+  width: 44px; height: 44px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px;
+  color: var(--text);
+  flex-shrink: 0;
+  align-self: center;
+}
+.dd-ed-sb-fields {
+  flex: 1; min-width: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 10px;
+}
+.dd-ed-sb-field {
+  display: flex; align-items: center; gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.dd-ed-sb-field span { flex: 0 0 70px; }
+.dd-ed-sb-field input, .dd-ed-sb-field select {
+  flex: 1; min-width: 0;
+}
+.dd-ed-sb-row > button.danger {
+  flex: 0 0 32px;
+  width: 32px;
+  padding: 0;
+  align-self: stretch;
+  font-size: 18px;
+}
+.dd-ed-sb-add {
+  padding: 10px 18px;
+  display: flex;
+  border-top: 1px solid var(--border);
+}
+.dd-ed-sb-add button {
+  flex: 1;
+}
+
 /* Toast */
 .dd-ed-toast {
   position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);

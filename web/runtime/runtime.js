@@ -184,9 +184,54 @@ function send(msg) { conn.send(msg); }
 
 // ───────── Overlays ─────────
 
-document.querySelectorAll(".dd-sb-menu").forEach((btn) => {
-  btn.addEventListener("click", () => openOverlay(btn.dataset.overlay));
-});
+// Sidebar buttons are now driven by configs/_sidebar.yaml served at
+// /api/sidebar. We rebuild the button strip on first load and after the
+// user edits the sidebar in the editor (refresh via SSE or page reload).
+async function loadSidebar() {
+  let cfg;
+  try {
+    const r = await fetch("/api/sidebar?t=" + encodeURIComponent(token));
+    cfg = await r.json();
+  } catch (e) {
+    console.error("sidebar fetch failed", e);
+    return;
+  }
+  const host = document.getElementById("sb-buttons");
+  host.innerHTML = "";
+  for (const b of cfg.buttons || []) {
+    const btn = document.createElement("button");
+    btn.className = "dd-sb-menu";
+    btn.dataset.id = b.id || "";
+    btn.title = b.label || "";
+    const g = document.createElement("span");
+    g.className = "dd-sb-glyph";
+    g.textContent = b.glyph || "•";
+    btn.appendChild(g);
+    const l = document.createElement("span");
+    l.className = "dd-sb-lbl";
+    l.textContent = b.label || "";
+    btn.appendChild(l);
+    btn.addEventListener("click", () => handleSidebarClick(b));
+    host.appendChild(btn);
+  }
+}
+
+function handleSidebarClick(b) {
+  if (navigator.vibrate) navigator.vibrate(8);
+  if (b.kind === "overlay") {
+    openOverlay(b.target);
+  } else if (b.kind === "action") {
+    fetch("/api/action?t=" + encodeURIComponent(token), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: b.target || {} }),
+    }).catch(() => {});
+  } else {
+    console.warn("unknown sidebar button kind:", b.kind);
+  }
+}
+
+loadSidebar();
 overlayClose.addEventListener("click", closeOverlay);
 
 function openOverlay(kind) {

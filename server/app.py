@@ -23,7 +23,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import actions, auth, chrome, config, desktops, dynamic, filters, log_buffer, registry, themes, watcher, winri
+from . import actions, auth, chrome, config, desktops, dynamic, filters, log_buffer, registry, sidebar, themes, watcher, winri
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
@@ -551,6 +551,20 @@ async def stream_logs(request: Request):
             "Connection": "keep-alive",
         },
     )
+
+
+@app.get("/api/sidebar")
+def get_sidebar(request: Request) -> JSONResponse:
+    auth.require_token(request)
+    return JSONResponse(sidebar.load())
+
+
+@app.put("/api/sidebar")
+async def put_sidebar(request: Request) -> JSONResponse:
+    auth.require_token(request)
+    body = await request.json()
+    sidebar.save(body)
+    return JSONResponse({"ok": True})
 
 
 @app.get("/api/filters")

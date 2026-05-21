@@ -36,6 +36,7 @@ const els = {
   saveBtn: document.getElementById("save-btn"),
   previewBtn: document.getElementById("preview-btn"),
   filtersBtn: document.getElementById("filters-btn"),
+  sidebarBtn: document.getElementById("sidebar-btn"),
   newBtn: document.getElementById("config-new"),
   deleteBtn: document.getElementById("config-delete"),
   toast: document.getElementById("toast"),
@@ -497,6 +498,7 @@ els.deleteBtn.addEventListener("click", async () => {
 els.saveBtn.addEventListener("click", save);
 els.previewBtn.addEventListener("click", preview);
 els.filtersBtn.addEventListener("click", openFiltersModal);
+els.sidebarBtn.addEventListener("click", openSidebarModal);
 els.modalClose.addEventListener("click", closeModal);
 els.modalCancel.addEventListener("click", closeModal);
 els.modal.addEventListener("click", (e) => { if (e.target === els.modal) closeModal(); });
@@ -533,6 +535,7 @@ function renderFiltersModal(filters, processes) {
   const rows = Array.from(seen.values()).sort((a, b) => a.process.toLowerCase().localeCompare(b.process.toLowerCase()));
 
   _modalState = {
+    kind: "filters",
     hidden: new Set([...(filters.hide_processes || [])].map(s => s.toLowerCase())),
     hide_classes: filters.hide_classes || [],
     hide_title_regex: filters.hide_title_regex || [],
@@ -600,6 +603,11 @@ async function closeModal() { els.modal.hidden = true; _modalState = null; }
 
 els.modalSave.addEventListener("click", async () => {
   if (!_modalState) return closeModal();
+  if (_modalState.kind === "filters") return saveFiltersModal();
+  if (_modalState.kind === "sidebar") return saveSidebarModal();
+});
+
+async function saveFiltersModal() {
   const hide_processes = Array.from(_modalState.hidden).map(k => _modalState.canonical.get(k) || k);
   hide_processes.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
   try {
@@ -616,7 +624,168 @@ els.modalSave.addEventListener("click", async () => {
     toast(`saved · ${hide_processes.length} hidden`);
     closeModal();
   } catch (e) { toast("save failed: " + e, true); }
-});
+}
+
+// ───────── Sidebar modal ─────────
+
+async function openSidebarModal() {
+  els.modal.hidden = false;
+  els.modalBody.innerHTML = "<div class='dd-ed-modal-empty'>loading…</div>";
+  try {
+    const cfg = await fetch("/api/sidebar" + qs).then(r => r.json());
+    _modalState = { kind: "sidebar", buttons: (cfg.buttons || []).map(b => ({ ...b })) };
+    renderSidebarModal();
+  } catch (e) {
+    els.modalBody.innerHTML = `<div class='dd-ed-modal-empty'>failed: ${e}</div>`;
+  }
+}
+
+function renderSidebarModal() {
+  const head = "<div class='dd-ed-modal-help'>Tap a button on the tablet's right-side strip to trigger its action or open an overlay. Reorder with ↑ / ↓; new buttons append to the bottom.</div>";
+  els.modalBody.innerHTML = head;
+
+  const list = document.createElement("div");
+  list.className = "dd-ed-sb-list";
+  _modalState.buttons.forEach((b, idx) => list.appendChild(buildSidebarRow(b, idx)));
+  els.modalBody.appendChild(list);
+
+  const adder = document.createElement("div");
+  adder.className = "dd-ed-sb-add";
+  const addBtn = document.createElement("button");
+  addBtn.textContent = "+ Add button";
+  addBtn.addEventListener("click", () => {
+    _modalState.buttons.push({
+      id: "btn_" + Math.random().toString(36).slice(2, 6),
+      glyph: "•", label: "New", kind: "overlay", target: "apps",
+    });
+    renderSidebarModal();
+  });
+  adder.appendChild(addBtn);
+  els.modalBody.appendChild(adder);
+}
+
+function buildSidebarRow(b, idx) {
+  const row = document.createElement("div");
+  row.className = "dd-ed-sb-row";
+
+  // Reorder column
+  const reorder = document.createElement("div");
+  reorder.className = "dd-ed-sb-reorder";
+  const up = document.createElement("button");
+  up.textContent = "↑"; up.disabled = idx === 0;
+  up.addEventListener("click", () => moveSidebarRow(idx, -1));
+  const dn = document.createElement("button");
+  dn.textContent = "↓"; dn.disabled = idx === _modalState.buttons.length - 1;
+  dn.addEventListener("click", () => moveSidebarRow(idx, +1));
+  reorder.appendChild(up); reorder.appendChild(dn);
+  row.appendChild(reorder);
+
+  // Glyph preview
+  const preview = document.createElement("div");
+  preview.className = "dd-ed-sb-preview";
+  preview.textContent = b.glyph || "•";
+  row.appendChild(preview);
+
+  // Form fields
+  const fields = document.createElement("div");
+  fields.className = "dd-ed-sb-fields";
+
+  fields.appendChild(field("Glyph", inputText(b.glyph || "", v => { b.glyph = v; preview.textContent = v || "•"; })));
+  fields.appendChild(field("Label", inputText(b.label || "", v => { b.label = v; })));
+  fields.appendChild(field("Kind", inputSelect(b.kind || "overlay", ["overlay", "action"], v => {
+    b.kind = v;
+    if (v === "overlay" && (typeof b.target !== "string")) b.target = "apps";
+    if (v === "action"  && (typeof b.target !== "object" || !b.target)) b.target = { type: "hotkey", keys: "" };
+    renderSidebarModal();  // re-render to swap target editor
+  })));
+  if (b.kind === "overlay") {
+    fields.appendChild(field("Overlay", inputSelect(b.target || "apps",
+      ["apps", "winri", "bookmarks"], v => { b.target = v; })));
+  } else {
+    const actType = (b.target && b.target.type) || "hotkey";
+    fields.appendChild(field("Action", inputSelect(actType,
+      ["hotkey", "command", "launch", "switch_desktop", "python"], v => {
+        b.target = { type: v };
+        renderSidebarModal();
+      })));
+    if (actType === "hotkey") {
+      fields.appendChild(field("Keys", inputText((b.target?.keys) || "", v => { b.target.keys = v; })));
+    } else if (actType === "command") {
+      fields.appendChild(field("Cmd",  inputText((b.target?.cmd) || "", v => { b.target.cmd = v; })));
+    } else if (actType === "launch") {
+      fields.appendChild(field("Target", inputText((b.target?.target) || "", v => { b.target.target = v; })));
+    } else if (actType === "switch_desktop") {
+      fields.appendChild(field("Index", inputText(String((b.target?.index) ?? 1), v => { b.target.index = Number(v) || 1; })));
+    } else if (actType === "python") {
+      fields.appendChild(field("Provider", inputText((b.target?.provider) || "", v => { b.target.provider = v; })));
+    }
+  }
+
+  row.appendChild(fields);
+
+  // Delete
+  const del = document.createElement("button");
+  del.className = "danger";
+  del.textContent = "×";
+  del.title = "Remove";
+  del.addEventListener("click", () => {
+    _modalState.buttons.splice(idx, 1);
+    renderSidebarModal();
+  });
+  row.appendChild(del);
+
+  return row;
+}
+
+function field(label, input) {
+  const wrap = document.createElement("label");
+  wrap.className = "dd-ed-sb-field";
+  const span = document.createElement("span");
+  span.textContent = label;
+  wrap.appendChild(span);
+  wrap.appendChild(input);
+  return wrap;
+}
+
+function inputText(value, onChange) {
+  const i = document.createElement("input");
+  i.type = "text"; i.value = value;
+  i.addEventListener("input", () => onChange(i.value));
+  return i;
+}
+
+function inputSelect(value, options, onChange) {
+  const s = document.createElement("select");
+  for (const o of options) {
+    const op = document.createElement("option");
+    op.value = o; op.textContent = o;
+    s.appendChild(op);
+  }
+  s.value = value;
+  s.addEventListener("change", () => onChange(s.value));
+  return s;
+}
+
+function moveSidebarRow(idx, delta) {
+  const arr = _modalState.buttons;
+  const j = idx + delta;
+  if (j < 0 || j >= arr.length) return;
+  [arr[idx], arr[j]] = [arr[j], arr[idx]];
+  renderSidebarModal();
+}
+
+async function saveSidebarModal() {
+  try {
+    const r = await fetch("/api/sidebar" + qs, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ buttons: _modalState.buttons }),
+    });
+    if (!r.ok) throw new Error(r.statusText);
+    toast(`saved · ${_modalState.buttons.length} buttons (reload tablet)`);
+    closeModal();
+  } catch (e) { toast("save failed: " + e, true); }
+}
 
 async function save() {
   const name = (layout.name || "").trim() || prompt("Save as name?");

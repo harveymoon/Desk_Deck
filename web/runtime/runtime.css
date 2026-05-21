@@ -73,6 +73,10 @@ html, body {
   padding-bottom: env(safe-area-inset-bottom);
   padding-right: env(safe-area-inset-right);
 }
+.dd-sb-buttons {
+  display: flex; flex-direction: column;
+  overflow-y: auto;
+}
 .dd-sb-menu {
   appearance: none;
   background: transparent;
