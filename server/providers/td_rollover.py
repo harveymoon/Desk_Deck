@@ -16,14 +16,28 @@ def _format(payload: dict | None) -> str:
     par = payload.get("par") or {}
     op_ = payload.get("op") or {}
     name = par.get("name", "?")
-    val = par.get("value")
+    val_eval = par.get("value")
+    val_raw  = par.get("val")
     style = par.get("style", "?")
     nmin = par.get("normMin")
     nmax = par.get("normMax")
+    cmin = par.get("clampMin")
+    cmax = par.get("clampMax")
+
+    # Show eval() value; if the raw typed value differs (expression mode),
+    # surface it in parens so the user can tell.
+    if val_raw is not None and val_raw != val_eval and not isinstance(val_raw, (int, float, bool)):
+        val_s = f"{_v(val_eval)}  (raw='{val_raw}')"
+    else:
+        val_s = _v(val_eval)
+
+    # Build the range hint. Prefer clamp if set, else normalised UI range.
     range_s = ""
-    if nmin is not None and nmax is not None:
-        range_s = f"  [{_n(nmin)}..{_n(nmax)}]"
-    val_s = _v(val)
+    if cmin is not None or cmax is not None:
+        range_s = f"  clamp[{_n(cmin)}..{_n(cmax)}]"
+    elif nmin is not None and nmax is not None:
+        range_s = f"  norm[{_n(nmin)}..{_n(nmax)}]"
+
     op_name = op_.get("name", "?")
     return f"{name} = {val_s}{range_s}  ·  {op_name}.{name} ({style})\n"
 

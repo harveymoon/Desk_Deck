@@ -57,9 +57,12 @@ class DeskDeckConnector:
 
         # Debug counters / rate-limit.
         self._stats = {"tick": 0, "rx": 0, "tx": 0, "emit": 0}
-        self._tick_log_every = 60       # ~once every 60 ticks = ~6s at 10Hz
-        self._rx_verbose_until = 5      # print full payload for the first N rx messages
+        self._tick_log_every = 300      # ~once every 300 ticks = ~30s at 10Hz
+        self._rx_verbose_until = 2      # raw-payload print only for the first 2 rx
         self._last_status_print = 0
+        # Throttle for rollover_par value-only emits (identity changes always
+        # emit instantly). Frame count since last value-only emit.
+        self._last_rollover_emit_frame = -999
 
         # Reset Extensions case: the .tox is reloading Python but the ws is
         # already open. The real onConnect won't fire again, so re-send
@@ -190,7 +193,7 @@ class DeskDeckConnector:
             self._dbg(f"OnRx: bad json: {e}  raw={txt[:200]!r}")
             return
         if msg.get("t") != "cmd":
-            return  # ignore hello / ack / unknown
+            return
         kind = msg.get("kind")
         cid  = msg.get("id")
         handler = getattr(self, f"_handle_{kind}", None)
@@ -200,9 +203,9 @@ class DeskDeckConnector:
             return
         try:
             handler(msg)
-            self._dbg(f"OnRx cmd ok: {kind}  {self._short_args(msg)}")
             self._ack(cid, True)
         except Exception as e:
+            # Only log failures — successes are silent to keep the textport quiet.
             self._dbg(f"OnRx cmd FAILED: {kind} {self._short_args(msg)}  → {e}")
             self._ack(cid, False, str(e))
 
@@ -306,20 +309,22 @@ class DeskDeckConnector:
             return
         self._last_selected = paths
         self._stats["emit"] += 1
-        self._dbg(f"emit state.selected ({len(paths)} op(s): {list(paths)[:3]}{'...' if len(paths)>3 else ''})")
         self._send({
             "t": "state", "kind": "selected",
             "ops": [self._op_brief(o) for o in ops if o is not None],
         })
 
     def _selected_ops(self):
-        """Find selected ops in whichever pane is the active network editor.
+        """Return the user's current op selection.
 
-        ui.panes[0] is whichever pane happens to be first in the layout —
-        often a textport or geometry viewer, not the network editor — so
-        ui.panes[0].selected is usually empty. We prefer ui.activePane if
-        it's a NetworkEditor, then scan for any NetworkEditor pane with a
-        non-empty selection.
+        TD distinguishes:
+          - pane.selected — list of ops with selection rectangle (set by
+            box-select or shift-click; a plain single click does NOT
+            populate this in many builds).
+          - pane.current  — the single op with focus (set by any click).
+
+        We try selected first; if empty, fall back to current as a single-
+        element list so the tablet still updates on a plain click.
         """
         candidates = []
         try:
@@ -334,24 +339,38 @@ class DeskDeckConnector:
             pass
 
         seen = set()
+        network_panes = []
         for pane in candidates:
             if pane is None or id(pane) in seen:
                 continue
             seen.add(id(pane))
-            ptype = getattr(pane, "type", None)
-            if ptype is not None and ptype != "NetworkEditor":
-                continue
+            if getattr(pane, "type", None) == "NetworkEditor":
+                network_panes.append(pane)
+
+        # 1. Pane with a non-empty selection wins.
+        for pane in network_panes:
             try:
                 sel = pane.selected or []
             except Exception:
                 continue
             if sel:
                 return sel
-        # Fall back to the active pane's empty selection (covers "deselected
-        # everything" emit so the tablet clears too).
-        for pane in candidates:
+
+        # 2. Else use the current op of the first network pane.
+        for pane in network_panes:
             try:
-                return pane.selected or []
+                cur = pane.current
+            except Exception:
+                continue
+            if cur is not None:
+                return [cur]
+
+        # 3. Last resort: whatever the active pane's selected returns (may
+        #    be empty — covers the deselect-everything case so the tablet
+        #    clears its label).
+        if candidates:
+            try:
+                return candidates[0].selected or []
             except Exception:
                 pass
         return []
@@ -370,29 +389,41 @@ class DeskDeckConnector:
         if ro_op_path != self._last_rollover_op:
             self._last_rollover_op = ro_op_path
             self._stats["emit"] += 1
-            self._dbg(f"emit state.rollover_op ({ro_op_path or 'none'})")
             self._send({
                 "t": "state", "kind": "rollover_op",
                 "op": self._op_brief(ro_op) if ro_op is not None else None,
             })
 
-        # Build a cheap signature so we don't flood when value didn't change.
+        # Build a cheap signature. Animated / expression pars re-evaluate to
+        # a different float every tick — throttle value-only changes to
+        # ~4 Hz so we don't flood the WS + textport. Identity changes
+        # (different par hovered) always emit immediately.
         sig = None
+        ident = None
         if ro_par is not None and ro_par.owner is not None:
             try:
                 v = ro_par.eval()
             except Exception:
                 v = None
             sig = (ro_par.owner.path, ro_par.name, v)
-        if sig != self._last_rollover_par:
-            self._last_rollover_par = sig
-            self._stats["emit"] += 1
-            self._dbg(f"emit state.rollover_par ({sig[0] + '.' + sig[1] if sig else 'none'} = {sig[2] if sig else ''})")
-            self._send({
-                "t": "state", "kind": "rollover_par",
-                "op":  self._op_brief(ro_par.owner) if ro_par is not None else None,
-                "par": self._par_snapshot(ro_par)  if ro_par is not None else None,
-            })
+            ident = (ro_par.owner.path, ro_par.name)
+        old = self._last_rollover_par
+        if sig == old:
+            return
+        old_ident = (old[0], old[1]) if old else None
+        ident_changed = ident != old_ident
+        now_frame = self._stats["tick"]
+        if not ident_changed and (now_frame - self._last_rollover_emit_frame) < 3:
+            # Same par, value just jittered, last emit was <3 ticks ago — skip.
+            return
+        self._last_rollover_par = sig
+        self._last_rollover_emit_frame = now_frame
+        self._stats["emit"] += 1
+        self._send({
+            "t": "state", "kind": "rollover_par",
+            "op":  self._op_brief(ro_par.owner) if ro_par is not None else None,
+            "par": self._par_snapshot(ro_par)  if ro_par is not None else None,
+        })
 
     def _diff_pane_path(self):
         try:
@@ -471,15 +502,27 @@ class DeskDeckConnector:
     def _par_snapshot(self, par):
         try:
             style = par.style
+            # Read both raw val (typed value or expression result) and eval()
+            # (always evaluated number). For expression-mode pars they differ.
+            try:    value = par.eval()
+            except Exception: value = None
+            try:    raw_val = par.val
+            except Exception: raw_val = None
+            # TD's clampMin/clampMax pars are toggles + values; the actual
+            # numeric clamp lives on `clampMinValue` / `clampMaxValue`. Read
+            # whichever path the build exposes.
+            cmin = self._first_attr(par, ("clampMinValue", "clampMin"))
+            cmax = self._first_attr(par, ("clampMaxValue", "clampMax"))
             out = {
                 "name":     par.name,
                 "label":    par.label,
                 "style":    style,
-                "value":    par.eval(),
+                "value":    value,
+                "val":      raw_val,
                 "normMin":  getattr(par, "normMin", None),
                 "normMax":  getattr(par, "normMax", None),
-                "clampMin": par.clampMin if getattr(par, "clampMin", None) is not None else None,
-                "clampMax": par.clampMax if getattr(par, "clampMax", None) is not None else None,
+                "clampMin": cmin,
+                "clampMax": cmax,
             }
             if style == "Menu":
                 names  = getattr(par, "menuNames",  None) or []
@@ -488,6 +531,13 @@ class DeskDeckConnector:
             return out
         except Exception as e:
             return {"name": getattr(par, "name", "?"), "error": str(e)}
+
+    def _first_attr(self, obj, names):
+        for n in names:
+            v = getattr(obj, n, None)
+            if v is not None and not isinstance(v, bool):
+                return v
+        return None
 
     def _send(self, payload):
         ws = op("ws")
