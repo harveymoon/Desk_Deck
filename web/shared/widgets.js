@@ -917,15 +917,15 @@ function renderColorRow(group, opPath, highlight, emit) {
   const top = document.createElement("div");
   top.className = "dd-pp-color-main";
 
-  // Swatch IS the native colour input — tap opens the OS picker
-  // directly. Android Chrome blocks programmatic .click() forwarding
-  // on type=color, so we let the input be the visible target.
-  const swatch = document.createElement("input");
-  swatch.type = "color";
+  // Swatch is a flat button. Tapping it opens our own HSV popup
+  // (rather than the OS picker, which on Android is clunky).
+  const swatch = document.createElement("button");
+  swatch.type = "button";
   swatch.className = "dd-pp-color-swatch";
   swatch.title = "Tap to open colour picker";
-  // Alias so the rest of the function keeps working unchanged.
-  const picker = swatch;
+  // No native picker — kept this `picker` alias only to mean
+  // "current swatch state" for sendHex/paint code paths below.
+  const picker = { value: "#ffffff" };
 
   // Expand arrow — reveals the per-channel sliders.
   const expand = document.createElement("button");
@@ -1006,9 +1006,31 @@ function renderColorRow(group, opPath, highlight, emit) {
     setExpanded(!expanded);
   });
 
-  // No separate click handler — the input opens its own picker on tap.
-  picker.addEventListener("input", () => sendHex(picker.value));
-  picker.addEventListener("change", () => sendHex(picker.value));
+  // Open our custom HSV popup on tap. Pass the alpha par (if any) so
+  // the popup can render an alpha slider too. Live update on every
+  // drag tick; closes on outside-tap or close button.
+  let pickerInstance = null;
+  swatch.addEventListener("click", (e) => {
+    e.preventDefault();
+    if (pickerInstance) { pickerInstance.close(); pickerInstance = null; return; }
+    const alphaPar = (currentPars.length === 4) ? currentPars[3] : null;
+    pickerInstance = openColorPicker({
+      anchor: swatch,
+      hex: hexFromChans(),
+      alpha: alphaPar ? Number(alphaPar.value) || 0 : null,
+      onChange: (hex) => sendHex(hex),
+      onAlpha: alphaPar ? (a) => {
+        emit({
+          t: "value", id: "td_pars",
+          value: a,
+          payload: { path: opPath, par: alphaPar.name, style: alphaPar.style || "Float" },
+        });
+        currentPars[3] = Object.assign({}, currentPars[3], { value: a });
+        paint();
+      } : null,
+      onClose: () => { pickerInstance = null; },
+    });
+  });
 
   function sendHex(h) {
     if (!h || h.length < 7) return;
@@ -1330,6 +1352,221 @@ function makeInlineLadder({ isInt, onNudge }) {
   });
 
   return el;
+}
+
+// ─── HSV Colour Picker popup ──────────────────────────────────────
+// Custom popup with:
+//   - SV plane (saturation × value) at the current hue
+//   - vertical hue strip
+//   - optional alpha strip
+//   - hex readout
+// Every drag tick emits onChange(hex). Backdrop tap or close button
+// dismisses. Returns { close } so callers can dismiss programmatically.
+function openColorPicker({ anchor, hex, alpha, onChange, onAlpha, onClose }) {
+  // Strip existing pickers — one at a time.
+  document.querySelectorAll(".dd-cp-backdrop").forEach(b => b.remove());
+
+  const backdrop = document.createElement("div");
+  backdrop.className = "dd-cp-backdrop";
+
+  const popup = document.createElement("div");
+  popup.className = "dd-cp-popup";
+
+  // ---- DOM structure ----
+  const sv = document.createElement("div"); sv.className = "dd-cp-sv";
+  const svInner = document.createElement("div"); svInner.className = "dd-cp-sv-inner";
+  const svCursor = document.createElement("div"); svCursor.className = "dd-cp-cursor";
+  sv.appendChild(svInner);
+  sv.appendChild(svCursor);
+
+  const hue = document.createElement("div"); hue.className = "dd-cp-hue";
+  const hueCursor = document.createElement("div"); hueCursor.className = "dd-cp-cursor-h";
+  hue.appendChild(hueCursor);
+
+  let alphaEl = null, alphaCursor = null, alphaCheckerBg = null;
+  if (alpha != null && onAlpha) {
+    alphaEl = document.createElement("div"); alphaEl.className = "dd-cp-alpha";
+    alphaCheckerBg = document.createElement("div"); alphaCheckerBg.className = "dd-cp-alpha-bg";
+    alphaCursor = document.createElement("div"); alphaCursor.className = "dd-cp-cursor-h";
+    alphaEl.appendChild(alphaCheckerBg);
+    alphaEl.appendChild(alphaCursor);
+  }
+
+  const footer = document.createElement("div"); footer.className = "dd-cp-footer";
+  const hexLbl = document.createElement("div"); hexLbl.className = "dd-cp-hex";
+  const closeBtn = document.createElement("button");
+  closeBtn.type = "button";
+  closeBtn.className = "dd-cp-close";
+  closeBtn.textContent = "×";
+  footer.appendChild(hexLbl);
+  footer.appendChild(closeBtn);
+
+  popup.appendChild(sv);
+  popup.appendChild(hue);
+  if (alphaEl) popup.appendChild(alphaEl);
+  popup.appendChild(footer);
+
+  // ---- State (HSV + alpha) ----
+  let [h0, s0, v0] = (() => {
+    const r = parseInt(hex.slice(1, 3), 16) / 255;
+    const g = parseInt(hex.slice(3, 5), 16) / 255;
+    const b = parseInt(hex.slice(5, 7), 16) / 255;
+    return rgbToHsv(r, g, b);
+  })();
+  let a0 = (alpha == null) ? 1 : alpha;
+
+  // ---- Paint helpers ----
+  function hslHue() { return `hsl(${h0}, 100%, 50%)`; }
+  function paintSv() {
+    // Background hue from H. Foreground: white→clear left-to-right
+    // (saturation), black→clear top-to-bottom (value). Standard SV picker.
+    svInner.style.background =
+      `linear-gradient(to bottom, rgba(0,0,0,0), rgba(0,0,0,1)),` +
+      `linear-gradient(to right, rgba(255,255,255,1), rgba(255,255,255,0)),` +
+      hslHue();
+    // Cursor position
+    const r = sv.getBoundingClientRect();
+    const cx = s0 * r.width;
+    const cy = (1 - v0) * r.height;
+    svCursor.style.left = `${cx}px`;
+    svCursor.style.top  = `${cy}px`;
+    // Cursor outline contrast: white on dark, black on light.
+    const [rr, gg, bb] = hsvToRgb(h0, s0, v0);
+    const lum = 0.2126 * rr + 0.7152 * gg + 0.0722 * bb;
+    svCursor.style.borderColor = lum < 0.5 ? "#fff" : "#000";
+  }
+  function paintHue() {
+    const r = hue.getBoundingClientRect();
+    hueCursor.style.top = `${(h0 / 360) * r.height}px`;
+  }
+  function paintAlpha() {
+    if (!alphaEl) return;
+    const r = alphaEl.getBoundingClientRect();
+    alphaCursor.style.top = `${(1 - a0) * r.height}px`;
+    const [rr, gg, bb] = hsvToRgb(h0, s0, v0);
+    const cstr = `rgb(${Math.round(rr*255)}, ${Math.round(gg*255)}, ${Math.round(bb*255)})`;
+    alphaCheckerBg.style.background = `linear-gradient(to bottom, ${cstr}, transparent)`;
+  }
+  function currentHex() {
+    const [rr, gg, bb] = hsvToRgb(h0, s0, v0);
+    const toH = (f) => Math.round(Math.max(0, Math.min(1, f)) * 255).toString(16).padStart(2, "0").toUpperCase();
+    return "#" + toH(rr) + toH(gg) + toH(bb);
+  }
+  function paintHex() { hexLbl.textContent = currentHex(); }
+  function paintAll() { paintSv(); paintHue(); paintAlpha(); paintHex(); }
+
+  // ---- Drag wiring (doc-level so Android can't steal it) ----
+  function dragArea(el, onPos) {
+    let id = null;
+    function move(e) {
+      if (e.pointerId !== id) return;
+      const r = el.getBoundingClientRect();
+      const x = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+      const y = Math.max(0, Math.min(1, (e.clientY - r.top)  / r.height));
+      onPos(x, y);
+    }
+    function end(e) {
+      if (e.pointerId !== id) return;
+      id = null;
+      document.removeEventListener("pointermove", move);
+      document.removeEventListener("pointerup",     end);
+      document.removeEventListener("pointercancel", end);
+    }
+    el.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      id = e.pointerId;
+      try { el.setPointerCapture(e.pointerId); } catch {}
+      document.addEventListener("pointermove", move);
+      document.addEventListener("pointerup",     end);
+      document.addEventListener("pointercancel", end);
+      const r = el.getBoundingClientRect();
+      const x = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+      const y = Math.max(0, Math.min(1, (e.clientY - r.top)  / r.height));
+      onPos(x, y);
+    });
+  }
+
+  dragArea(sv, (x, y) => {
+    s0 = x; v0 = 1 - y;
+    paintAll();
+    onChange(currentHex());
+  });
+  dragArea(hue, (_x, y) => {
+    h0 = y * 360;
+    paintAll();
+    onChange(currentHex());
+  });
+  if (alphaEl) {
+    dragArea(alphaEl, (_x, y) => {
+      a0 = 1 - y;
+      paintAlpha(); paintHex();
+      onAlpha(a0);
+    });
+  }
+
+  closeBtn.addEventListener("click", () => close());
+  backdrop.addEventListener("pointerdown", (e) => {
+    // Outside-tap → close. Tap inside the popup is stopped below.
+    close();
+  });
+  popup.addEventListener("pointerdown", (e) => e.stopPropagation());
+
+  function close() {
+    backdrop.remove();
+    if (onClose) onClose();
+  }
+
+  // ---- Position the popup ----
+  backdrop.appendChild(popup);
+  document.body.appendChild(backdrop);
+  // Defer to next frame so getBoundingClientRect on inner elements is valid.
+  requestAnimationFrame(() => {
+    const ar = anchor.getBoundingClientRect();
+    const pr = popup.getBoundingClientRect();
+    // Prefer below the anchor; flip above if it doesn't fit.
+    let top = ar.bottom + 8;
+    if (top + pr.height > window.innerHeight - 8) {
+      top = Math.max(8, ar.top - pr.height - 8);
+    }
+    let left = ar.left + ar.width / 2 - pr.width / 2;
+    left = Math.max(8, Math.min(window.innerWidth - pr.width - 8, left));
+    popup.style.top = `${top}px`;
+    popup.style.left = `${left}px`;
+    paintAll();
+  });
+
+  return { close };
+}
+
+function hsvToRgb(h, s, v) {
+  // h in [0, 360), s & v in [0, 1]
+  const c = v * s;
+  const hh = (h % 360) / 60;
+  const x = c * (1 - Math.abs((hh % 2) - 1));
+  let r, g, b;
+  if (hh < 1)      { r = c; g = x; b = 0; }
+  else if (hh < 2) { r = x; g = c; b = 0; }
+  else if (hh < 3) { r = 0; g = c; b = x; }
+  else if (hh < 4) { r = 0; g = x; b = c; }
+  else if (hh < 5) { r = x; g = 0; b = c; }
+  else             { r = c; g = 0; b = x; }
+  const m = v - c;
+  return [r + m, g + m, b + m];
+}
+
+function rgbToHsv(r, g, b) {
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  const d = max - min;
+  const v = max;
+  const s = max === 0 ? 0 : d / max;
+  let h = 0;
+  if (d > 0) {
+    if (max === r)      h = 60 * (((g - b) / d) % 6);
+    else if (max === g) h = 60 * ((b - r) / d + 2);
+    else                h = 60 * ((r - g) / d + 4);
+    if (h < 0) h += 360;
+  }
+  return [h, s, v];
 }
 
 const RENDERERS = {
