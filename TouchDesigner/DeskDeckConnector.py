@@ -59,8 +59,10 @@ class DeskDeckConnector:
 
         # User-registered macros (name -> callable). Use RegisterMacro from
         # any TD script to wire one up. Inbound {"kind":"macro","name":...}
-        # commands look up here.
+        # commands look up here. A handful of common operations are pre-
+        # registered so the default tablet layout works out of the box.
         self._macros = {}
+        self._register_builtin_macros()
 
         # Optional textport mirror — wraps sys.stdout/stderr so every print()
         # in TD also flows to the tablet's td_log textbox. Off by default;
@@ -611,6 +613,33 @@ class DeskDeckConnector:
         """Register a callable invokable from the tablet via
         action: {type: td_macro, name: "<name>"}."""
         self._macros[str(name)] = fn
+
+    def _register_builtin_macros(self):
+        """Pre-register macros for common TD operations so the default
+        tablet layout works without the user adding anything. User-registered
+        macros (via RegisterMacro) override these by name."""
+        def perform_mode(**_):  ui.performMode = True
+        def exit_perform(**_):  ui.performMode = False
+        def toggle_perform(**_): ui.performMode = not ui.performMode
+        def save_project(**_):
+            try: project.save(project.saveName)
+            except Exception: project.save()
+        def open_textport(**_):
+            try: ui.panes.current.changeType(PaneType.TEXTPORT)
+            except Exception: pass
+        def open_palette(**_):
+            try: ui.panes.current.changeType(PaneType.PALETTE)
+            except Exception: pass
+
+        for name, fn in (
+            ("perform_mode",   perform_mode),
+            ("exit_perform",   exit_perform),
+            ("toggle_perform", toggle_perform),
+            ("save_project",   save_project),
+            ("open_textport",  open_textport),
+            ("open_palette",   open_palette),
+        ):
+            self._macros[name] = fn
 
     def _op_brief(self, o):
         if o is None:

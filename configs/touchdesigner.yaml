@@ -35,7 +35,7 @@ widgets:
     h: 140
     props:
       label: PERFORM
-      action: { type: hotkey, keys: F11 }
+      action: { type: td_macro, name: perform_mode }
 
   - id: palette
     type: button
