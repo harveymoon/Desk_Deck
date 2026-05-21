@@ -237,6 +237,9 @@ overlayClose.addEventListener("click", closeOverlay);
 function openOverlay(kind) {
   overlay.dataset.kind = kind;
   overlay.hidden = false;
+  // body.has-overlay drives the full-screen takeover (hides titlebar +
+  // sidebar so the X button in the overlay head is the only way out).
+  document.body.classList.add("has-overlay");
   overlayBody.innerHTML = "";
   overlayBody.classList.remove("is-bookmarks");
   overlayBody.classList.remove("is-winri");
@@ -262,6 +265,7 @@ function closeOverlay() {
   overlay.hidden = true;
   overlayBody.innerHTML = "";
   overlay.dataset.kind = "";
+  document.body.classList.remove("has-overlay");
   overlayBack.hidden = true;
   _appsDrill = null;
   stopWinriPoll();
@@ -617,16 +621,15 @@ function updateOverviewToggle(state) {
 function buildWinriControls() {
   overlayBody.innerHTML = "";
 
-  // Navigate focus
-  overlayBody.appendChild(section("Navigate focus"));
+  // No section heads — the X-only header is the chrome, the grids stack
+  // back-to-back with their button glyphs+labels carrying their own meaning.
+
   const navGrid = document.createElement("div");
   navGrid.className = "dd-winri-grid";
   navGrid.appendChild(winriBtn({ glyph: "◀", label: "Prev", action: "focus-prev" }));
   navGrid.appendChild(winriBtn({ glyph: "▶", label: "Next", action: "focus-next" }));
   overlayBody.appendChild(navGrid);
 
-  // Scroll
-  overlayBody.appendChild(section("Scroll the strip"));
   const scrollGrid = document.createElement("div");
   scrollGrid.className = "dd-winri-grid is-tight";
   scrollGrid.appendChild(winriBtn({ glyph: "◀◀", label: "Far",    scroll: -600 }));
@@ -636,8 +639,6 @@ function buildWinriControls() {
   scrollGrid.appendChild(winriBtn({ glyph: "▶▶", label: "Far",    scroll:  600 }));
   overlayBody.appendChild(scrollGrid);
 
-  // Resize
-  overlayBody.appendChild(section("Resize focused window"));
   const sizeGrid = document.createElement("div");
   sizeGrid.className = "dd-winri-grid";
   sizeGrid.appendChild(winriBtn({ glyph: "▮",    label: "1/4",     resize: "quarter" }));
@@ -648,7 +649,6 @@ function buildWinriControls() {
   overlayBody.appendChild(sizeGrid);
 
   // Mode (single toggle, syncs with winri's state.overview_active)
-  overlayBody.appendChild(section("Mode"));
   const modeGrid = document.createElement("div");
   modeGrid.className = "dd-winri-grid";
   _overviewToggleEl = document.createElement("button");
@@ -677,8 +677,7 @@ function buildWinriControls() {
   overlayBody.appendChild(modeGrid);
 
   // Live strip — built once, mutated in place by updateWinriStrip()
-  _winriStripHead = section("Tile strip");
-  overlayBody.appendChild(_winriStripHead);
+  _winriStripHead = null;
   _winriStripEl = document.createElement("div");
   _winriStripEl.className = "dd-winri-strip";
   overlayBody.appendChild(_winriStripEl);
@@ -687,7 +686,6 @@ function buildWinriControls() {
 function updateWinriStrip(state) {
   if (!_winriStripEl) return;
   const wins = state.windows || [];
-  if (_winriStripHead) _winriStripHead.textContent = `Tile strip · ${wins.length} window${wins.length === 1 ? "" : "s"}`;
 
   // Key existing children by data-wid so we can update without recreating.
   const existing = new Map();

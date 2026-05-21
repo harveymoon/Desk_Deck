@@ -364,16 +364,21 @@ html, body {
 }
 
 /* ─── Overlay (Apps / Winri / Bookmarks) ─── */
+/* Full-screen takeover: when an overlay is open, the only escape is the
+   X button in the overlay header. The titlebar and right-side sidebar
+   are hidden via body.has-overlay so the user can't accidentally jump
+   contexts mid-task (especially important for the Winri controller). */
 .dd-overlay {
   position: fixed;
-  top: 88px; left: 0; right: 112px; bottom: 0;
-  z-index: 27;
+  top: 0; left: 0; right: 0; bottom: 0;
+  z-index: 40;
   background: var(--bg);
-  border-right: var(--border-w) solid var(--border);
   display: flex;
   flex-direction: column;
 }
 .dd-overlay[hidden] { display: none; }
+body.has-overlay .dd-titlebar,
+body.has-overlay .dd-sidebar { display: none; }
 .dd-overlay-head {
   display: flex; align-items: stretch;
   height: 60px;
@@ -628,15 +633,20 @@ html, body {
 
 .dd-winri-strip {
   display: flex;
-  gap: 10px;
+  gap: 14px;
   overflow-x: auto;
-  padding: 10px;
+  padding: 16px;
   background: var(--surface);
   border: 1px solid var(--border);
   -webkit-overflow-scrolling: touch;
+  /* Strip grows to fill remaining vertical space in the overlay so the
+     thumbnails get as much room as the layout can give them. */
+  flex: 1 1 auto;
+  min-height: 320px;
+  align-items: stretch;
 }
 .dd-winri-strip-item {
-  flex: 0 0 240px;
+  flex: 0 0 360px;
   background: var(--surface-2);
   border: 1px solid var(--border);
   padding: 0;
@@ -655,8 +665,12 @@ html, body {
   background: var(--surface-3);
 }
 .dd-winri-strip-thumb-wrap {
+  /* Thumb takes the full item width and fills all remaining vertical
+     space above the label, so the whole window preview is visible
+     without the label overlapping it. */
   width: 100%;
-  aspect-ratio: 4 / 3;
+  flex: 1 1 auto;
+  min-height: 0;
   background: var(--surface-3);
   border-bottom: 1px solid var(--border);
   display: flex; align-items: center; justify-content: center;
@@ -666,8 +680,8 @@ html, body {
 .dd-winri-strip-thumb {
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  object-position: top left;
+  object-fit: contain;
+  object-position: center;
   display: block;
   image-rendering: -webkit-optimize-contrast;
 }
@@ -679,21 +693,25 @@ html, body {
   text-transform: uppercase;
 }
 .dd-winri-strip-body {
-  padding: 8px 10px;
+  /* Label sits below the thumbnail at a fixed, predictable height so
+     it doesn't push into the preview area. */
+  flex: 0 0 auto;
+  padding: 10px 12px;
   display: flex; flex-direction: column;
   gap: 4px;
   background: var(--surface-2);
+  border-top: 1px solid var(--border);
 }
 .dd-winri-strip-title {
   color: var(--text);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.25;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .dd-winri-strip-proc {
   color: var(--text-dim);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
