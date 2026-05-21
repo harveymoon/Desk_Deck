@@ -251,14 +251,36 @@ def _fast_chain(path: str, n: int) -> None:
 
 
 def resize_quarter(window_id: int | None = None) -> None:
+    """Animate to ~quarter width, then center. No native quarter action."""
     resize_to_fraction(0.25, window_id)
+    _settle()
 
 
 def resize_half(window_id: int | None = None) -> None:
+    """Animate toward half, snap to Winri's exact resize-halfscreen, then center."""
     resize_to_fraction(0.5, window_id)
+    action("resize-halfscreen")
+    _settle()
 
 
 def resize_full(window_id: int | None = None) -> None:
-    # Don't go to literally 1.0 of screen width — Winri's tiling padding
-    # would clip it. Aim for ~98% so the chain converges quickly.
-    resize_to_fraction(0.98, window_id)
+    """Animate toward full, snap to Winri's exact resize-fullscreen, then center.
+
+    The native resize-fullscreen knows how much room Winri's tiling padding
+    consumes — we slide most of the way via chained width-increments for the
+    visual effect, then hand off to the native action so the final width is
+    truly maximal (no ~50 px gap to the screen edge)."""
+    resize_to_fraction(1.0, window_id)
+    action("resize-fullscreen")
+    _settle()
+
+
+def _settle() -> None:
+    """Tiny pause then a center-focused so the window ends up framed nicely
+    in the viewport after a resize."""
+    time.sleep(0.05)
+    try:
+        action("center-focused")
+    except Exception as e:
+        # Older winri without center-focused → no-op
+        print(f"[winri] center-focused unavailable: {e}", flush=True)

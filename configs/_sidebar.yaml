@@ -1,0 +1,23 @@
+buttons:
+- id: apps
+  glyph: ▦
+  label: Apps
+  kind: overlay
+  target: apps
+- id: winri
+  glyph: ⊞
+  label: Winri
+  kind: overlay
+  target: winri
+- id: favorites
+  glyph: ★
+  label: Favorites
+  kind: overlay
+  target: bookmarks
+- id: dashboard
+  glyph: 📊
+  label: Dashboard
+  kind: action
+  target:
+    type: hotkey
+    keys: ctrl+shift+g
