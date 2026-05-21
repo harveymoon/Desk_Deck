@@ -324,20 +324,18 @@ class DeskDeckConnector:
     def _selected_ops(self):
         """Return the user's current op selection.
 
-        Primary path: ui.activePane.owner.selectedChildren — the proper
-        TD API for 'what ops are highlighted in the network the user is
-        currently editing'. Works for plain clicks, shift-clicks, and
-        box-select.
+        Primary: ui.panes.current.owner.selectedChildren — the TD API for
+        'ops highlighted in the network the user is editing right now'.
+        Works for plain clicks, shift-clicks, and box-select.
 
-        Fallbacks for builds / pane types where selectedChildren isn't
-        available: pane.selected, then pane.current, then any network
-        editor pane.
+        Fallbacks cover builds / pane types where the primary path returns
+        nothing.
         """
-        # 1. Best: active pane's owner.selectedChildren
+        # 1. Best: ui.panes.current → owner → selectedChildren
         try:
-            ap = getattr(ui, "activePane", None)
-            if ap is not None:
-                owner = getattr(ap, "owner", None)
+            cur_pane = ui.panes.current
+            if cur_pane is not None:
+                owner = getattr(cur_pane, "owner", None)
                 if owner is not None:
                     sc = getattr(owner, "selectedChildren", None)
                     if sc:
@@ -347,6 +345,12 @@ class DeskDeckConnector:
 
         # Gather network panes for fallbacks
         candidates = []
+        try:
+            cp = ui.panes.current
+            if cp is not None:
+                candidates.append(cp)
+        except Exception:
+            pass
         try:
             ap = getattr(ui, "activePane", None)
             if ap is not None:
@@ -395,7 +399,6 @@ class DeskDeckConnector:
             if cur is not None:
                 return [cur]
 
-        # 5. Last resort: empty selection (clears tablet label on deselect)
         return []
 
     def _diff_rollover(self):
