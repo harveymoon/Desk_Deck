@@ -43,6 +43,11 @@ export function updateWidget(el, widget, patch) {
       el.scrollTop = el.scrollHeight;
     }
   } else if (widget.type === "slider") {
+    // Retune range first (min/max/step/label) — that way the value patch
+    // gets quantised against the *new* range, not the old one.
+    if ("min" in patch || "max" in patch || "step" in patch || "label" in patch) {
+      if (el && typeof el._tune === "function") el._tune(patch);
+    }
     if ("value" in patch) setSliderValue(el, widget, patch.value);
     if ("disabled" in patch) el.classList.toggle("is-disabled", !!patch.disabled);
     if ("hidden" in patch) el.style.display = patch.hidden ? "none" : "";
@@ -129,9 +134,12 @@ function renderLabel(w, _emit) {
 // ───────── Slider ─────────
 function renderSlider(w, emit) {
   const p = w.props || {};
-  const min = p.min ?? 0;
-  const max = p.max ?? 100;
-  const step = p.step ?? 1;
+  // min/max/step/label are *mutable* — the server can patch them at runtime
+  // (used by the TD rollover slider to retune itself to whatever par is
+  // under the mouse, so the slider operates in real par units, not 0..1).
+  let min  = p.min  ?? 0;
+  let max  = p.max  ?? 100;
+  let step = p.step ?? 1;
   const orientation = (p.orientation === "vertical") ? "vertical" : "horizontal";
   const el = document.createElement("div");
   el.className = `dd-widget dd-slider is-${orientation}`;
@@ -168,6 +176,7 @@ function renderSlider(w, emit) {
     }
   }
   function quantize(v) {
+    if (step <= 0) return Math.max(min, Math.min(max, v));
     const snapped = Math.round((v - min) / step) * step + min;
     return Math.max(min, Math.min(max, snapped));
   }
@@ -177,6 +186,32 @@ function renderSlider(w, emit) {
   function pctToValue(pct) {
     return quantize(min + pct * (max - min));
   }
+  // Decimal places to display, derived from step. Integer step → no
+  // decimals. Otherwise count the digits after the decimal point in
+  // step (e.g. step=0.001 → 3), capped at 4 so display stays readable.
+  function decimalsFor(s) {
+    if (!s || s >= 1 || Number.isInteger(s)) return 0;
+    const str = s.toString();
+    if (str.includes("e-")) return Math.min(4, parseInt(str.split("e-")[1], 10) || 0);
+    const dot = str.indexOf(".");
+    return dot < 0 ? 0 : Math.min(4, str.length - dot - 1);
+  }
+  function format(v) {
+    const d = decimalsFor(step);
+    return d === 0 ? `${Math.round(v)}` : v.toFixed(d);
+  }
+  // Patch hook: server calls el._tune({min,max,step,label}) when the par
+  // under the mouse changes. Re-quantises + redraws the current value
+  // against the new range so the thumb position stays meaningful.
+  el._tune = (cfg) => {
+    if (cfg.min  !== undefined) min  = cfg.min;
+    if (cfg.max  !== undefined) max  = cfg.max;
+    if (cfg.step !== undefined) step = cfg.step;
+    if (cfg.label !== undefined) labEl.textContent = cfg.label;
+    value = quantize(value);
+    setPct(valueToPct(value));
+    valEl.textContent = format(value);
+  };
 
   // Throttle (not debounce): emit at most once every THROTTLE_MS during a
   // continuous drag, and always emit the FINAL value when the drag ends
@@ -202,7 +237,7 @@ function renderSlider(w, emit) {
   function update(v, opts = {}) {
     value = quantize(v);
     setPct(valueToPct(value));
-    valEl.textContent = Number.isInteger(step) ? `${value}` : value.toFixed(2);
+    valEl.textContent = format(value);
     if (opts.emit) {
       pendingValue = value;
       const now = performance.now();

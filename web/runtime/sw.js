@@ -1,6 +1,6 @@
 // Minimal service worker: caches the app shell so the launcher icon opens
 // instantly even before the WS connects. Live data still flows through WS.
-const CACHE = 'desk-deck-v23';
+const CACHE = 'desk-deck-v24';
 const SHELL = [
   '/',
   '/runtime-static/runtime.js',

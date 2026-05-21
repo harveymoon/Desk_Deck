@@ -127,14 +127,14 @@ def _td_set_par(action: dict[str, Any], payload: dict[str, Any], context: dict, 
 
     Sentinel: path / par == "$rollover" → resolve at dispatch time from
     td.state("rollover_par") so the widget always drives whatever's under
-    the mouse RIGHT NOW. When both path and par are $rollover (the
-    quick-adjust slider case), we also map the tablet's 0..1 slider
-    range onto the par's normMin..normMax so a fixed slider widget
-    drives any parameter sensibly.
+    the mouse RIGHT NOW. The slider runs in real par units (the server
+    retunes its min/max/step on every rollover change), so the incoming
+    value is the literal value to push — Int still gets rounded, Toggle
+    gets a 0.5 threshold for safety in case something bool-ish drives in.
     """
     path = action.get("path") or ""
     par = action.get("par") or ""
-    is_rollover = (path == "$rollover" and par == "$rollover")
+    style = None
     if path == "$rollover" or par == "$rollover":
         rp = td.state("rollover_par") or {}
         op_ = (rp.get("op") or {})
@@ -146,29 +146,16 @@ def _td_set_par(action: dict[str, Any], payload: dict[str, Any], context: dict, 
             path = op_["path"]
         if par == "$rollover":
             par = p["name"]
-        if is_rollover:
-            # Map 0..1 from the tablet slider → par's normMin..normMax
-            nmin = float(p.get("normMin") or 0.0)
-            nmax = float(p.get("normMax") or 1.0)
-            raw = payload.get("value") if payload and "value" in payload else action.get("value")
-            if raw is None:
-                return
-            try:
-                raw = float(raw)
-            except (TypeError, ValueError):
-                return
-            value = nmin + max(0.0, min(1.0, raw)) * (nmax - nmin)
-            # Honor par type — Toggle wants a bool, Int rounds.
-            style = p.get("style")
-            if style == "Toggle":
-                value = bool(value >= 0.5)
-            elif style == "Int":
-                value = int(round(value))
-            td.send_cmd("set_par", path=path, par=par, value=value)
-            return
+        style = p.get("style")
     value = payload.get("value") if payload and "value" in payload else action.get("value")
     if value is None:
         return
+    if style == "Int":
+        try: value = int(round(float(value)))
+        except (TypeError, ValueError): pass
+    elif style == "Toggle":
+        try: value = bool(float(value) >= 0.5)
+        except (TypeError, ValueError): pass
     td.send_cmd("set_par", path=path, par=par, value=value)
 
 

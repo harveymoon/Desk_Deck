@@ -212,7 +212,10 @@ def _on_td_rollover_par(payload: dict | None) -> None:
         _loop,
     )
 
-    # Slider (td_rollover_drive)
+    # Slider (td_rollover_drive) — runs in REAL par-units, not 0..1.
+    # Retune the slider's min/max/step/label to match the par so the
+    # displayed value next to the bar is literally par.eval() and the
+    # outgoing drag value is sent straight to TD (no normalisation).
     slider_patch: dict = {"hidden": not is_numeric or no_par}
     if is_numeric and val is not None:
         try:
@@ -222,9 +225,26 @@ def _on_td_rollover_par(payload: dict | None) -> None:
         if v is not None:
             nmin = float(p.get("normMin") or 0.0)
             nmax = float(p.get("normMax") or 1.0)
+            if nmax <= nmin:                    # degenerate range → fall back
+                nmin, nmax = (v - 1.0, v + 1.0) if v else (0.0, 1.0)
             span = nmax - nmin
-            norm = 0.0 if span == 0 else max(0.0, min(1.0, (v - nmin) / span))
-            slider_patch["value"] = norm
+            if p.get("style") == "Int":
+                step = 1
+            else:
+                # ~1000 steps across the range, snapped to a clean power
+                # of ten so the readout shows tidy decimals.
+                import math as _math
+                raw = span / 1000.0
+                exp = _math.floor(_math.log10(raw)) if raw > 0 else -3
+                step = max(10 ** exp, 1e-4)
+            label = (p.get("name") or "VAL").upper()
+            slider_patch.update({
+                "min":   nmin,
+                "max":   nmax,
+                "step":  step,
+                "label": label,
+                "value": v,
+            })
     asyncio.run_coroutine_threadsafe(
         hub.push_widget_update("td_rollover_drive", slider_patch),
         _loop,
