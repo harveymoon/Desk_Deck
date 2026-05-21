@@ -669,9 +669,15 @@ async def winri_scroll(request: Request) -> JSONResponse:
         raise HTTPException(503, f"winri unreachable: {e}")
 
 
-@app.post("/api/winri/resize/quarter")
-async def winri_resize_quarter(request: Request) -> JSONResponse:
-    """No native quarter action in winri; approximate by halving then trimming."""
+@app.post("/api/winri/resize/{kind}")
+async def winri_resize_smooth(kind: str, request: Request) -> JSONResponse:
+    """Animated resize via chained width-(in|de)crement.
+
+    kind ∈ {"quarter", "half", "full"}. Each chains a series of native
+    width-step actions so the window appears to slide to the target size,
+    rather than snapping instantly the way Winri's native resize-* actions
+    do. Step size is detected live so it works regardless of the user's
+    [tiling] resize_increment setting."""
     auth.require_token(request)
     body = {}
     try:
@@ -679,9 +685,17 @@ async def winri_resize_quarter(request: Request) -> JSONResponse:
     except Exception:
         pass
     wid = body.get("window_id") if isinstance(body, dict) else None
+    target_id = int(wid) if wid else None
+    fn = {
+        "quarter": winri.resize_quarter,
+        "half":    winri.resize_half,
+        "full":    winri.resize_full,
+    }.get(kind)
+    if not fn:
+        raise HTTPException(400, f"unknown resize kind: {kind}")
     try:
-        winri.resize_quarter(int(wid) if wid else None)
-        return JSONResponse({"ok": True})
+        fn(target_id)
+        return JSONResponse({"ok": True, "kind": kind})
     except Exception as e:
         raise HTTPException(503, f"winri unreachable: {e}")
 

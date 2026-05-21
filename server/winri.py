@@ -103,15 +103,25 @@ def thumbnail(window_id: int) -> tuple[int, bytes, str]:
     return _request("GET", f"/windows/{window_id}/thumbnail")
 
 
-def resize_quarter(window_id: int | None = None) -> None:
-    """Winri has no direct quarter-screen action — approximate by triggering
-    resize-halfscreen then trimming via width-decrement.
+def resize_to_fraction(fraction: float, window_id: int | None = None,
+                       max_steps: int = 80) -> None:
+    """Animate the focused window's width to ~fraction * screen_width by
+    chaining width-(in|de)crement calls.
 
-    The actual step size of width-decrement depends on the user's
-    [tiling] resize_increment config (default 20, but user configs vary
-    — e.g. resize_increment = 50). We measure the step size live by
-    issuing a single width-decrement and observing the delta, then
-    computing the remaining decrements exactly.
+    Each native Winri width-step is a discrete jump (50 px in the user's
+    config, 20 px default), so the visual "slide" effect comes from issuing
+    many of them back-to-back. We:
+
+      1. Read the live width and screen.
+      2. Decide direction (grow → width-increment / shrink → width-decrement).
+      3. Probe the actual step size with a single call (so we work
+         regardless of the user's [tiling] resize_increment).
+      4. Chain the rest of the calls to land within one step of target.
+
+    Bounded by max_steps so a misconfig can't lock the loop. Going larger
+    than ~80 steps gets noticeably slow because each HTTP roundtrip is
+    ~5–30 ms — for very big jumps callers should anchor via a native
+    action first (resize-halfscreen) and then call this.
     """
     s = state()
     if not s:
@@ -131,30 +141,43 @@ def resize_quarter(window_id: int | None = None) -> None:
                 return w
         return None
 
-    # 1. Start at half so we have a known anchor.
-    action("resize-halfscreen")
-    time.sleep(0.1)
-    s = state() or s
     win = find_win(s)
     if not win:
         return
-    half_width = float(win.get("width") or 0)
-    target = screen / 4.0
-    if half_width <= target * 1.05:
-        return  # already close enough — nothing to do
+    cur = float(win.get("width") or 0)
+    target = screen * float(fraction)
+    diff = target - cur
+    if abs(diff) < 25:
+        return  # already close enough
 
-    # 2. Probe step size with a single width-decrement.
-    action("width-decrement")
-    time.sleep(0.1)
+    act = "width-increment" if diff > 0 else "width-decrement"
+
+    # Probe step size with a single call.
+    action(act)
+    time.sleep(0.05)
     s = state() or s
     win2 = find_win(s)
     if not win2:
         return
-    cur_width = float(win2.get("width") or 0)
-    step_size = max(1.0, half_width - cur_width)
+    new_w = float(win2.get("width") or 0)
+    step = abs(new_w - cur)
+    if step < 1:
+        return  # something else interfered — bail rather than spin
 
-    # 3. Chain remaining decrements; round to nearest so we don't overshoot.
-    overshoot = cur_width - target
-    remaining = max(0, int(round(overshoot / step_size)))
-    for _ in range(min(remaining, 30)):
-        action("width-decrement")
+    remaining = max(0, int(round(abs(target - new_w) / step)))
+    for _ in range(min(remaining, max_steps - 1)):
+        action(act)
+
+
+def resize_quarter(window_id: int | None = None) -> None:
+    resize_to_fraction(0.25, window_id)
+
+
+def resize_half(window_id: int | None = None) -> None:
+    resize_to_fraction(0.5, window_id)
+
+
+def resize_full(window_id: int | None = None) -> None:
+    # Don't go to literally 1.0 of screen width — Winri's tiling padding
+    # would clip it. Aim for ~98% so the chain converges quickly.
+    resize_to_fraction(0.98, window_id)

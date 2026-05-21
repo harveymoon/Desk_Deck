@@ -550,9 +550,9 @@ function buildWinriControls() {
   overlayBody.appendChild(section("Resize focused window"));
   const sizeGrid = document.createElement("div");
   sizeGrid.className = "dd-winri-grid";
-  sizeGrid.appendChild(winriBtn({ glyph: "▮",    label: "1/4",     quarter: true }));
-  sizeGrid.appendChild(winriBtn({ glyph: "▮▮",   label: "1/2",     action: "resize-halfscreen" }));
-  sizeGrid.appendChild(winriBtn({ glyph: "▮▮▮▮", label: "Full",    action: "resize-fullscreen" }));
+  sizeGrid.appendChild(winriBtn({ glyph: "▮",    label: "1/4",     resize: "quarter" }));
+  sizeGrid.appendChild(winriBtn({ glyph: "▮▮",   label: "1/2",     resize: "half" }));
+  sizeGrid.appendChild(winriBtn({ glyph: "▮▮▮▮", label: "Full",    resize: "full" }));
   sizeGrid.appendChild(winriBtn({ glyph: "−",    label: "Width −", action: "width-decrement" }));
   sizeGrid.appendChild(winriBtn({ glyph: "+",    label: "Width +", action: "width-increment" }));
   overlayBody.appendChild(sizeGrid);
@@ -636,7 +636,7 @@ function section(text) {
   return el;
 }
 
-function winriBtn({ glyph, label, action, scroll, quarter, warn }) {
+function winriBtn({ glyph, label, action, scroll, resize, warn }) {
   const b = document.createElement("button");
   b.className = "dd-winri-btn" + (warn ? " is-warn" : "");
   const g = document.createElement("span");
@@ -657,14 +657,15 @@ function winriBtn({ glyph, label, action, scroll, quarter, warn }) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ delta: scroll }),
         });
-      } else if (quarter) {
-        await fetch(`/api/winri/resize/quarter?t=${encodeURIComponent(token)}`, {
+      } else if (resize) {
+        await fetch(`/api/winri/resize/${resize}?t=${encodeURIComponent(token)}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: "{}",
         });
       }
-      renderWinri({ silent: true });
+      // Next 1.5s poll updates the strip; no immediate full re-render
+      // (keeps user's strip scroll position intact).
     } catch (e) {
       console.error("winri action failed", e);
     }
