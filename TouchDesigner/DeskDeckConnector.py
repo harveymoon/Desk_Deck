@@ -203,7 +203,11 @@ class DeskDeckConnector:
             return
         try:
             handler(msg)
-            self._ack(cid, True)
+            # Skip the success ack for high-rate fire-and-forget kinds so
+            # slider drags don't double the WS traffic. Errors always ack
+            # so the server can log them.
+            if kind not in ("set_par", "pulse"):
+                self._ack(cid, True)
         except Exception as e:
             # Only log failures — successes are silent to keep the textport quiet.
             self._dbg(f"OnRx cmd FAILED: {kind} {self._short_args(msg)}  → {e}")

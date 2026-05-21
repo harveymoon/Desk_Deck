@@ -155,17 +155,43 @@ function renderSlider(w, emit) {
   function pctToValue(pct) {
     return quantize(min + pct * (max - min));
   }
+
+  // Throttle (not debounce): emit at most once every THROTTLE_MS during a
+  // continuous drag, and always emit the FINAL value when the drag ends
+  // so the receiver lands exactly where the user left the thumb.
+  const THROTTLE_MS = 70;       // ~14 Hz — smooth for slider control
+  let lastEmitTime = 0;
+  let pendingValue = null;
+  let throttleTimer = null;
+
+  function flush() {
+    throttleTimer = null;
+    if (pendingValue === null) return;
+    if (pendingValue === lastSent) {
+      pendingValue = null;
+      return;
+    }
+    lastSent = pendingValue;
+    pendingValue = null;
+    lastEmitTime = performance.now();
+    emit({ t: "value", id: w.id, value: lastSent });
+  }
+
   function update(v, opts = {}) {
     value = quantize(v);
     setPct(valueToPct(value));
     valEl.textContent = Number.isInteger(step) ? `${value}` : value.toFixed(2);
-    if (opts.emit && value !== lastSent) {
-      lastSent = value;
-      if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => emit({ t: "value", id: w.id, value }), 30);
+    if (opts.emit) {
+      pendingValue = value;
+      const now = performance.now();
+      const elapsed = now - lastEmitTime;
+      if (elapsed >= THROTTLE_MS) {
+        flush();
+      } else if (throttleTimer === null) {
+        throttleTimer = setTimeout(flush, THROTTLE_MS - elapsed);
+      }
     }
   }
-  let debounceTimer = null;
   el._update = (v) => update(v);
 
   function onDown(e) {
@@ -181,6 +207,10 @@ function renderSlider(w, emit) {
   function onUp(e) {
     dragging = false;
     try { el.releasePointerCapture(e.pointerId); } catch {}
+    // Force-flush the final value so the receiver lands exactly where the
+    // thumb stopped, even if the last move arrived inside the throttle window.
+    if (throttleTimer !== null) { clearTimeout(throttleTimer); throttleTimer = null; }
+    flush();
   }
   function handleMove(e) {
     const rect = track.getBoundingClientRect();

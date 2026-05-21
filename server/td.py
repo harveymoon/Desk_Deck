@@ -132,7 +132,14 @@ def _notify(kind: str, payload: Any) -> None:
 
 def send_cmd(kind: str, **fields) -> int | None:
     """Send a typed command to TD. Returns the message id (for ack matching),
-    or None if TD isn't connected."""
+    or None if TD isn't connected.
+
+    High-rate fire-and-forget kinds (set_par, pulse) skip the ack
+    bookkeeping to keep slider drags from doubling WS traffic — the TD
+    side also omits the ack reply for these. If a set_par silently fails
+    the user will see it (param doesn't move), and we get one printed
+    error from the TD side which is enough for diagnosis.
+    """
     global _next_id
     if _ws is None or _loop is None:
         print(f"[td] no connection — dropping cmd {kind} {fields}", flush=True)
@@ -141,7 +148,8 @@ def send_cmd(kind: str, **fields) -> int | None:
         cid = _next_id
         _next_id += 1
     msg = {"t": "cmd", "id": cid, "kind": kind, **fields}
-    _pending_acks[cid] = msg
+    if kind not in _FIRE_AND_FORGET:
+        _pending_acks[cid] = msg
     try:
         asyncio.run_coroutine_threadsafe(_ws.send_text(json.dumps(msg)), _loop)
     except Exception as e:
@@ -149,6 +157,9 @@ def send_cmd(kind: str, **fields) -> int | None:
         _pending_acks.pop(cid, None)
         return None
     return cid
+
+
+_FIRE_AND_FORGET = {"set_par", "pulse"}
 
 
 # ---- subscribe / state access (used by providers) ----
