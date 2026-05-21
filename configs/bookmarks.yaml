@@ -73,3 +73,14 @@ widgets:
     action:
       type: hotkey
       keys: win+l
+- id: button_xmaz52
+  type: button
+  x: 64
+  y: 384
+  w: 240
+  h: 120
+  props:
+    label: '120'
+    action:
+      type: hotkey
+      keys: ''
