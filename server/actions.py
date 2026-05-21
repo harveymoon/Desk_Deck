@@ -179,6 +179,53 @@ def _td_macro(action: dict[str, Any], payload: dict[str, Any], context: dict, wi
     td.send_cmd("macro", name=name, args=action.get("args") or {})
 
 
+def _td_nudge_par(action: dict[str, Any], payload: dict[str, Any], context: dict, widget: dict) -> None:
+    """Increment a parameter by a signed delta (value-ladder UX).
+
+    payload.value carries the delta. With path/par == "$rollover" (or
+    unset), targets the parameter currently under the mouse in TD.
+    Reads current value from td.state('rollover_par'), adds delta,
+    sends set_par. Honours Int by rounding."""
+    path = action.get("path") or ""
+    par = action.get("par") or ""
+    delta = None
+    if payload and "value" in payload:
+        delta = payload["value"]
+    elif "value" in action:
+        delta = action["value"]
+    try:
+        delta = float(delta)
+    except (TypeError, ValueError):
+        return
+    if delta == 0:
+        return
+
+    cur_val = None
+    par_style = None
+    if (not path) or (not par) or path == "$rollover" or par == "$rollover":
+        rp = td.state("rollover_par") or {}
+        op_ = rp.get("op") or {}
+        p_meta = rp.get("par") or {}
+        if not op_.get("path") or not p_meta.get("name"):
+            return
+        if not path or path == "$rollover":
+            path = op_["path"]
+        if not par or par == "$rollover":
+            par = p_meta["name"]
+        cur_val = p_meta.get("value")
+        par_style = p_meta.get("style")
+
+    if cur_val is None:
+        return
+    try:
+        new_val = float(cur_val) + delta
+    except (TypeError, ValueError):
+        return
+    if par_style == "Int":
+        new_val = int(round(new_val))
+    td.send_cmd("set_par", path=path, par=par, value=new_val)
+
+
 def _td_toggle_par(action: dict[str, Any], payload: dict[str, Any], context: dict, widget: dict) -> None:
     """Flip a Toggle-style parameter. With no `path`/`par`, targets the
     parameter currently under the mouse in TD (rollover_par)."""
@@ -231,6 +278,7 @@ _HANDLERS = {
     "python": _python,
     "chrome_tab": _chrome_tab,
     "td_set_par": _td_set_par,
+    "td_nudge_par": _td_nudge_par,
     "td_macro": _td_macro,
     "td_toggle_par": _td_toggle_par,
     "td_open_help": _td_open_help,

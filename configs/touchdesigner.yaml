@@ -84,12 +84,27 @@ widgets:
     type: textbox
     x: 40
     y: 224
-    w: 760
+    w: 680
     h: 60
     props:
       monospace: true
       max_lines: 2
       source: td_rollover
+
+  # Value ladder: hold and drag UP/DOWN to pick magnitude (10/1/0.1/.01/.001),
+  # then LEFT/RIGHT to nudge. Always visible alongside the slider so it
+  # works for Float / Int / Toggle. For Toggle it's effectively a no-op
+  # (delta against a bool yields 0/1), so we hide it too on Toggle.
+  - id: td_rollover_ladder
+    type: value_ladder
+    x: 736
+    y: 224
+    w: 80
+    h: 60
+    props:
+      label: "±"
+      magnitudes: [10, 1, 0.1, 0.01, 0.001]
+      action: { type: td_nudge_par, path: "$rollover", par: "$rollover" }
 
   # Slider and toggle share the same slot. Only one is ever visible at a
   # time (server pushes hidden:true to whichever doesn't match the par
@@ -97,9 +112,9 @@ widgets:
   # one fills the whole rollover-control area.
   - id: td_rollover_drive
     type: slider
-    x: 820
+    x: 832
     y: 224
-    w: 736
+    w: 724
     h: 60
     props:
       label: VAL
@@ -111,9 +126,9 @@ widgets:
 
   - id: td_rollover_toggle
     type: button
-    x: 820
+    x: 832
     y: 224
-    w: 736
+    w: 724
     h: 60
     props:
       label: "(no toggle)"

@@ -205,6 +205,13 @@ def _on_td_rollover_par(payload: dict | None) -> None:
     is_numeric = style in ("Float", "Int")
     no_par     = not p  # mouse isn't over any par
 
+    # Value ladder: hidden unless we have a numeric par to nudge.
+    asyncio.run_coroutine_threadsafe(
+        hub.push_widget_update("td_rollover_ladder",
+                               {"hidden": not is_numeric or no_par}),
+        _loop,
+    )
+
     # Slider (td_rollover_drive)
     slider_patch: dict = {"hidden": not is_numeric or no_par}
     if is_numeric and val is not None:

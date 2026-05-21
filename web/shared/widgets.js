@@ -62,6 +62,12 @@ export function updateWidget(el, widget, patch) {
     }
   } else if (widget.type === "textbox" || widget.type === "label" || widget.type === "input") {
     if ("hidden" in patch) el.style.display = patch.hidden ? "none" : "";
+  } else if (widget.type === "value_ladder") {
+    if ("hidden" in patch) el.style.display = patch.hidden ? "none" : "";
+    if ("disabled" in patch) {
+      el.disabled = !!patch.disabled;
+      el.classList.toggle("is-disabled", !!patch.disabled);
+    }
   }
 }
 
@@ -433,6 +439,112 @@ function renderWindowList(w, _emit) {
   return el;
 }
 
+// ───────── Value Ladder ─────────
+// Hold to activate. Vertical drag picks a magnitude from a stacked list
+// (TD-style: 10 / 1 / 0.1 / 0.01 / 0.001). The first horizontal motion
+// past a lock threshold makes the stack disappear and starts streaming
+// per-step nudges. Each `STEP_PX` horizontal pixels = one step at the
+// chosen magnitude. Release closes the ladder.
+function renderValueLadder(w, emit) {
+  const p = w.props || {};
+  const magnitudes = p.magnitudes || [10, 1, 0.1, 0.01, 0.001];
+  const STEP_PX = p.step_px || 14;
+  const LOCK_PX = p.lock_px || 18;
+  const ROW_PX  = p.row_px  || 44;
+
+  const el = document.createElement("button");
+  el.className = "dd-widget dd-value-ladder";
+  el.type = "button";
+
+  const lbl = document.createElement("span");
+  lbl.className = "dd-value-ladder-label";
+  lbl.textContent = p.label || "±";
+  el.appendChild(lbl);
+
+  // Floating stack rendered inside the widget (overflow:visible above it).
+  const stack = document.createElement("div");
+  stack.className = "dd-ladder-stack";
+  for (const mag of magnitudes) {
+    const row = document.createElement("div");
+    row.className = "dd-ladder-row";
+    row.textContent = String(mag);
+    stack.appendChild(row);
+  }
+  el.appendChild(stack);
+
+  let dragging = false;
+  let phase = "off";              // off | vertical | horizontal
+  let chosenIdx = Math.floor(magnitudes.length / 2);
+  let startX = 0, startY = 0;
+  let cursorX = 0;                // running x reference for delta math
+
+  function highlight() {
+    for (let i = 0; i < stack.children.length; i++) {
+      stack.children[i].classList.toggle("is-on", i === chosenIdx);
+    }
+  }
+
+  el.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    dragging = true;
+    phase = "vertical";
+    chosenIdx = Math.floor(magnitudes.length / 2);
+    startX = e.clientX;
+    startY = e.clientY;
+    cursorX = e.clientX;
+    el.classList.add("is-active");
+    stack.classList.add("is-visible");
+    highlight();
+    try { el.setPointerCapture(e.pointerId); } catch {}
+    if (navigator.vibrate) navigator.vibrate(8);
+  });
+
+  el.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+
+    if (phase === "vertical") {
+      const center = Math.floor(magnitudes.length / 2);
+      // dy > 0 (moved down) → smaller magnitudes (lower in stack)
+      let idx = center + Math.round(dy / ROW_PX);
+      idx = Math.max(0, Math.min(magnitudes.length - 1, idx));
+      if (idx !== chosenIdx) { chosenIdx = idx; highlight(); }
+
+      if (Math.abs(dx) > LOCK_PX) {
+        phase = "horizontal";
+        stack.classList.remove("is-visible");
+        cursorX = e.clientX;
+        if (navigator.vibrate) navigator.vibrate(6);
+      }
+    } else if (phase === "horizontal") {
+      const dxSince = e.clientX - cursorX;
+      const steps = Math.trunc(dxSince / STEP_PX);
+      if (steps !== 0) {
+        const mag = magnitudes[chosenIdx];
+        const delta = steps * mag;
+        // Cap excessive precision so server JSON stays clean
+        const clean = Number(delta.toFixed(6));
+        emit({ t: "value", id: w.id, value: clean });
+        cursorX += steps * STEP_PX;
+      }
+    }
+  });
+
+  const finish = (e) => {
+    if (!dragging) return;
+    dragging = false;
+    phase = "off";
+    el.classList.remove("is-active");
+    stack.classList.remove("is-visible");
+    try { el.releasePointerCapture(e.pointerId); } catch {}
+  };
+  el.addEventListener("pointerup", finish);
+  el.addEventListener("pointercancel", finish);
+
+  return el;
+}
+
 const RENDERERS = {
   button: renderButton,
   label: renderLabel,
@@ -441,4 +553,5 @@ const RENDERERS = {
   input: renderInput,
   rotary: renderRotary,
   window_list: renderWindowList,
+  value_ladder: renderValueLadder,
 };

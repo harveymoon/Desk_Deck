@@ -270,6 +270,62 @@ html, body {
   cursor: pointer;
 }
 
+/* ─── Value Ladder (TD-style hold + drag par nudger) ─── */
+.dd-value-ladder {
+  background: var(--surface);
+  border: var(--border-w) solid var(--border);
+  color: var(--text);
+  cursor: grab;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 22px;
+  letter-spacing: 0.1em;
+  overflow: visible;
+  position: absolute;
+  -webkit-touch-callout: none;
+}
+.dd-value-ladder.is-active,
+.dd-value-ladder:active {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+  cursor: grabbing;
+}
+.dd-value-ladder.is-disabled { opacity: 0.4; pointer-events: none; }
+.dd-value-ladder-label { line-height: 1; }
+.dd-ladder-stack {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-2);
+  border: var(--border-w) solid var(--accent);
+  padding: 6px 0;
+  z-index: 100;
+  font-family: var(--font-mono);
+  font-size: 16px;
+  pointer-events: none;
+  opacity: 0;
+  white-space: nowrap;
+  transition: opacity 60ms linear;
+  min-width: 100px;
+  text-align: center;
+}
+.dd-ladder-stack.is-visible { opacity: 1; }
+.dd-ladder-row {
+  padding: 6px 18px;
+  color: var(--text-dim);
+  letter-spacing: 0.08em;
+}
+.dd-ladder-row.is-on {
+  color: var(--bg);
+  background: var(--accent);
+}
+
 /* ─── Rotary dial ─── */
 .dd-rotary {
   padding: 12px;
