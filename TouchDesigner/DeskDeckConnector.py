@@ -289,10 +289,7 @@ class DeskDeckConnector:
                       f"rx={self._stats['rx']} tx={self._stats['tx']} emit={self._stats['emit']}")
 
     def _diff_selected(self):
-        try:
-            ops = ui.panes[0].selected or []
-        except Exception:
-            ops = []
+        ops = self._selected_ops()
         paths = tuple(o.path for o in ops if o is not None)
         if paths == self._last_selected:
             return
@@ -303,6 +300,50 @@ class DeskDeckConnector:
             "t": "state", "kind": "selected",
             "ops": [self._op_brief(o) for o in ops if o is not None],
         })
+
+    def _selected_ops(self):
+        """Find selected ops in whichever pane is the active network editor.
+
+        ui.panes[0] is whichever pane happens to be first in the layout —
+        often a textport or geometry viewer, not the network editor — so
+        ui.panes[0].selected is usually empty. We prefer ui.activePane if
+        it's a NetworkEditor, then scan for any NetworkEditor pane with a
+        non-empty selection.
+        """
+        candidates = []
+        try:
+            ap = getattr(ui, "activePane", None)
+            if ap is not None:
+                candidates.append(ap)
+        except Exception:
+            pass
+        try:
+            candidates.extend(ui.panes)
+        except Exception:
+            pass
+
+        seen = set()
+        for pane in candidates:
+            if pane is None or id(pane) in seen:
+                continue
+            seen.add(id(pane))
+            ptype = getattr(pane, "type", None)
+            if ptype is not None and ptype != "NetworkEditor":
+                continue
+            try:
+                sel = pane.selected or []
+            except Exception:
+                continue
+            if sel:
+                return sel
+        # Fall back to the active pane's empty selection (covers "deselected
+        # everything" emit so the tablet clears too).
+        for pane in candidates:
+            try:
+                return pane.selected or []
+            except Exception:
+                pass
+        return []
 
     def _diff_rollover(self):
         try:
