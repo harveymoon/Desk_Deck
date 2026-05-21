@@ -733,7 +733,14 @@ class DeskDeckConnector:
         TD also re-asserts its own stdout per textport execution, so the
         mirror has to be re-installed periodically — Tick() calls this
         every tick when Streamtextport is on so prints typed after a
-        prior textport command still get captured."""
+        prior textport command still get captured.
+
+        Restoration is more delicate than capture: TD's textport sink is
+        whatever sys.__stdout__ was at interpreter start (Python preserves
+        the original stdout reference in __stdout__, and TD's launcher
+        wires that to the textport panel). We restore to *that* — the
+        previously-captured value can be stale if TD rotated its sink
+        between our install and the toggle-off."""
         want = bool(self._pp("Streamtextport", False))
         log_dat = op("log")
 
@@ -744,25 +751,32 @@ class DeskDeckConnector:
 
         if want:
             # Re-install if TD swapped sys.stdout back to its own textport.
+            # Re-capture the originals every install so we always have a
+            # fresh reference if TD rotated its sink.
             if sys.stdout is not log_dat:
-                if self._orig_stdout is None:
-                    self._orig_stdout = sys.stdout
-                if self._orig_stderr is None:
-                    self._orig_stderr = sys.stderr
+                self._orig_stdout = sys.stdout
+                self._orig_stderr = sys.stderr
                 sys.stdout = log_dat
                 sys.stderr = log_dat
                 if force:
                     self._dbg("Streamtextport ON — sys.stdout & stderr now write to op('log')")
         else:
-            # Restore originals if we previously installed.
-            if self._orig_stdout is not None:
-                sys.stdout = self._orig_stdout
-                self._orig_stdout = None
-            if self._orig_stderr is not None:
-                sys.stderr = self._orig_stderr
-                self._orig_stderr = None
+            # Only restore if WE are the current sink; otherwise TD or
+            # someone else has already swapped sys.stdout to something
+            # appropriate and we shouldn't stomp it.
+            #
+            # Prefer sys.__stdout__ (Python's original sink, which is the
+            # textport for TD) over our captured ref, since the captured
+            # one can be a transient textport-routing object that's no
+            # longer the canonical sink.
+            if sys.stdout is log_dat:
+                sys.stdout = sys.__stdout__ or self._orig_stdout or sys.stdout
+            if sys.stderr is log_dat:
+                sys.stderr = sys.__stderr__ or self._orig_stderr or sys.stderr
+            self._orig_stdout = None
+            self._orig_stderr = None
             if force:
-                self._dbg("Streamtextport OFF — sys.stdout restored")
+                self._dbg("Streamtextport OFF — sys.stdout restored to sys.__stdout__")
 
     def RegisterMacro(self, name, fn):
         """Register a callable invokable from the tablet via

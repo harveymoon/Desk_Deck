@@ -525,6 +525,9 @@ let _winriBuilt = false;     // controls vs strip are split so polls don't wipe 
 let _winriStripEl = null;
 let _winriStripHead = null;
 let _overviewToggleEl = null;
+// Last polled winri state. Used by the "Far" buttons to compute a
+// fraction-of-screen scroll delta without an extra request.
+let _winriLastState = null;
 
 async function openWinri() {
   overlayBody.classList.add("is-winri");
@@ -592,6 +595,7 @@ async function refreshWinri({ silent = false } = {}) {
     return;
   }
 
+  _winriLastState = state;
   if (!_winriBuilt) {
     buildWinriControls();
     _winriBuilt = true;
@@ -632,11 +636,11 @@ function buildWinriControls() {
 
   const scrollGrid = document.createElement("div");
   scrollGrid.className = "dd-winri-grid is-tight";
-  scrollGrid.appendChild(winriBtn({ glyph: "◀◀", label: "Far",    scroll: -600 }));
+  scrollGrid.appendChild(winriBtn({ glyph: "◀◀", label: "Far",    scrollFrac: -0.25 }));
   scrollGrid.appendChild(winriBtn({ glyph: "◀",  label: "Left",   scroll: -200 }));
   scrollGrid.appendChild(winriBtn({ glyph: "⊙",  label: "Center", action: "center-focused" }));
   scrollGrid.appendChild(winriBtn({ glyph: "▶",  label: "Right",  scroll:  200 }));
-  scrollGrid.appendChild(winriBtn({ glyph: "▶▶", label: "Far",    scroll:  600 }));
+  scrollGrid.appendChild(winriBtn({ glyph: "▶▶", label: "Far",    scrollFrac:  0.25 }));
   overlayBody.appendChild(scrollGrid);
 
   const sizeGrid = document.createElement("div");
@@ -805,7 +809,7 @@ function sizeStripItemToAspect(item, img) {
   });
 }
 
-function winriBtn({ glyph, label, action, scroll, resize, warn }) {
+function winriBtn({ glyph, label, action, scroll, scrollFrac, resize, warn }) {
   const b = document.createElement("button");
   b.className = "dd-winri-btn" + (warn ? " is-warn" : "");
   const g = document.createElement("span");
@@ -820,6 +824,17 @@ function winriBtn({ glyph, label, action, scroll, resize, warn }) {
     try {
       if (action) {
         await fetch(`/api/winri/action/${action}?t=${encodeURIComponent(token)}`, { method: "POST" });
+      } else if (scrollFrac !== undefined) {
+        // Far ◀◀ / Far ▶▶: scroll by a fraction of the *Windows* screen
+        // width. Falls back to a sensible pixel default if we haven't
+        // polled winri state yet (first click before first poll).
+        const screen = (_winriLastState && _winriLastState.screen_width) || 1920;
+        const delta = Math.round(screen * scrollFrac);
+        await fetch(`/api/winri/scroll?t=${encodeURIComponent(token)}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ delta }),
+        });
       } else if (scroll !== undefined) {
         await fetch(`/api/winri/scroll?t=${encodeURIComponent(token)}`, {
           method: "POST",
