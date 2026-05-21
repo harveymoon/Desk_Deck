@@ -84,11 +84,12 @@ document.addEventListener("fullscreenchange", () => {
 
 applyTheme(document.documentElement, DEFAULT_THEME);
 
-const stage     = document.getElementById("stage");
-const tbName    = document.getElementById("tb-name");
-const tbSource  = document.getElementById("tb-source");
-const tbStatus  = document.getElementById("tb-status");
-const overlay   = document.getElementById("overlay");
+const stage       = document.getElementById("stage");
+const sbName      = document.getElementById("sb-name");
+const sbSource    = document.getElementById("sb-source");
+const sbStatus    = document.getElementById("sb-status");
+const sbStatusLbl = document.getElementById("sb-status-lbl");
+const overlay     = document.getElementById("overlay");
 const overlayTitle = document.getElementById("overlay-title");
 const overlayBody  = document.getElementById("overlay-body");
 const overlayClose = document.getElementById("overlay-close");
@@ -99,8 +100,9 @@ let widgetEls = new Map(); // widget id -> DOM element
 let desktops = [];
 
 function setStatus(text, cls = "") {
-  tbStatus.textContent = text;
-  tbStatus.className = "dd-tb-status " + cls;
+  sbStatusLbl.textContent = text;
+  sbStatus.className = "dd-sb-status " + cls;
+  sbStatus.title = text;
 }
 
 function renderLayout(layout, theme) {
@@ -113,8 +115,8 @@ function renderLayout(layout, theme) {
   const cw = canvas.width  || 1600;
   const ch = canvas.height || 1000;
 
-  const vw = window.innerWidth;
-  const vh = window.innerHeight - 72;
+  const vw = window.innerWidth - 112;
+  const vh = window.innerHeight;
   const scale = Math.min(vw / cw, vh / ch);
   stage.style.width  = `${cw}px`;
   stage.style.height = `${ch}px`;
@@ -125,22 +127,22 @@ function renderLayout(layout, theme) {
     stage.appendChild(el);
     if (w.id) widgetEls.set(w.id, { el, widget: w });
   }
-  // Title bar
+  // Side-bar context display
   const ctx = layout._context || {};
   const synth = ctx.synthetic;
   const matched = ctx.matched;
   if (matched) {
-    tbName.textContent = layout.name || "—";
-    tbSource.textContent = `match: ${ctx.process || "?"}`;
+    sbName.textContent = layout.name || "—";
+    sbSource.textContent = "matched";
   } else if (synth) {
-    tbName.textContent = `${(ctx.process || "?").replace(/\.exe$/i, "").toUpperCase()}`;
-    tbSource.textContent = `no config · auto-window-list`;
+    sbName.textContent = (ctx.process || "?").replace(/\.exe$/i, "").toUpperCase();
+    sbSource.textContent = "auto windows";
   } else if (ctx.process) {
-    tbName.textContent = (ctx.process || "?").toUpperCase();
-    tbSource.textContent = `no config`;
+    sbName.textContent = (ctx.process || "?").toUpperCase();
+    sbSource.textContent = "no config";
   } else {
-    tbName.textContent = layout.name || "—";
-    tbSource.textContent = "";
+    sbName.textContent = layout.name || "—";
+    sbSource.textContent = "";
   }
 }
 
@@ -176,7 +178,7 @@ function send(msg) { conn.send(msg); }
 
 // ───────── Overlays ─────────
 
-document.querySelectorAll(".dd-tb-menu").forEach((btn) => {
+document.querySelectorAll(".dd-sb-menu").forEach((btn) => {
   btn.addEventListener("click", () => openOverlay(btn.dataset.overlay));
 });
 overlayClose.addEventListener("click", closeOverlay);

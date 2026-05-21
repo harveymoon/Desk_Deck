@@ -20,16 +20,26 @@
 <link rel="stylesheet" href="/runtime-static/runtime.css">
 </head>
 <body>
-  <header class="dd-titlebar" id="titlebar">
-    <button class="dd-tb-menu" data-overlay="apps" title="All Apps">▦</button>
-    <button class="dd-tb-menu" data-overlay="spaces" title="Spaces">▢▢</button>
-    <button class="dd-tb-menu" data-overlay="bookmarks" title="Bookmarks">★</button>
-    <div class="dd-tb-context" id="tb-context">
-      <span class="dd-tb-name" id="tb-name">— · —</span>
-      <span class="dd-tb-source" id="tb-source"></span>
+  <aside class="dd-sidebar" id="sidebar">
+    <div class="dd-sb-ctx">
+      <div class="dd-sb-name" id="sb-name">—</div>
+      <div class="dd-sb-source" id="sb-source"></div>
     </div>
-    <div class="dd-tb-status" id="tb-status">offline</div>
-  </header>
+    <button class="dd-sb-menu" data-overlay="apps" title="All Apps">
+      <span class="dd-sb-glyph">▦</span><span class="dd-sb-lbl">Apps</span>
+    </button>
+    <button class="dd-sb-menu" data-overlay="spaces" title="Spaces">
+      <span class="dd-sb-glyph">▢▢</span><span class="dd-sb-lbl">Spaces</span>
+    </button>
+    <button class="dd-sb-menu" data-overlay="bookmarks" title="Bookmarks">
+      <span class="dd-sb-glyph">★</span><span class="dd-sb-lbl">Marks</span>
+    </button>
+    <div class="dd-sb-spacer"></div>
+    <div class="dd-sb-status" id="sb-status" title="offline">
+      <span class="dd-sb-dot"></span>
+      <span class="dd-sb-status-lbl" id="sb-status-lbl">offline</span>
+    </div>
+  </aside>
 
   <main id="stage" class="dd-stage"></main>
 
