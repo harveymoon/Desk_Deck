@@ -560,10 +560,11 @@ function buildWinriControls() {
   overlayBody.appendChild(section("Scroll the strip"));
   const scrollGrid = document.createElement("div");
   scrollGrid.className = "dd-winri-grid is-tight";
-  scrollGrid.appendChild(winriBtn({ glyph: "◀◀", label: "Far",   scroll: -600 }));
-  scrollGrid.appendChild(winriBtn({ glyph: "◀",  label: "Left",  scroll: -200 }));
-  scrollGrid.appendChild(winriBtn({ glyph: "▶",  label: "Right", scroll:  200 }));
-  scrollGrid.appendChild(winriBtn({ glyph: "▶▶", label: "Far",   scroll:  600 }));
+  scrollGrid.appendChild(winriBtn({ glyph: "◀◀", label: "Far",    scroll: -600 }));
+  scrollGrid.appendChild(winriBtn({ glyph: "◀",  label: "Left",   scroll: -200 }));
+  scrollGrid.appendChild(winriBtn({ glyph: "⊙",  label: "Center", action: "center-focused" }));
+  scrollGrid.appendChild(winriBtn({ glyph: "▶",  label: "Right",  scroll:  200 }));
+  scrollGrid.appendChild(winriBtn({ glyph: "▶▶", label: "Far",    scroll:  600 }));
   overlayBody.appendChild(scrollGrid);
 
   // Resize
