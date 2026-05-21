@@ -181,29 +181,32 @@ async def _on_startup() -> None:
     _window_poll_task = asyncio.create_task(_poll_window_changes())
     _desktop_poll_task = asyncio.create_task(_poll_desktop_changes())
 
-    # When TD reports a new parameter under the mouse, also nudge any
-    # tablet widget with id="td_rollover_drive" so its slider position
-    # reflects the new par's current value (mapped to 0..1).
-    td.subscribe("rollover_par", _on_td_rollover_par)
+    # When TD reports a new "thing under the mouse" (par / pargroup / page
+    # / op / panel), drive the rollover-control widgets accordingly. Only
+    # par hovers show the slider/ladder/toggle right now; other kinds
+    # leave them hidden until we add dedicated widgets.
+    td.subscribe("rollover", _on_td_rollover)
 
     print("[startup] watcher + hot-reload + window/desktop pollers running", flush=True)
 
 
-def _on_td_rollover_par(payload: dict | None) -> None:
-    """Show / hide the rollover control widgets based on the rolled-over
-    parameter's style. Toggle pars → show the toggle button, hide the
-    slider. Numeric pars (Float / Int) → show the slider, hide the toggle.
-    Anything else (Str, RGB, XYZ, Menu, …) → hide both until we have
-    dedicated widgets for them."""
+def _on_td_rollover(payload: dict | None) -> None:
+    """Show / hide the rollover control widgets based on what's under the
+    mouse in TD. Single-par hovers drive the slider / ladder / toggle.
+    Anything else (pargroup, page, op, panel, nothing) hides them — they
+    will get their own widgets when we add picker / page-tab / etc.
+    """
     if _loop is None:
         return
-    p = ((payload or {}).get("par") or {})
+    kind_of = (payload or {}).get("kind_of") or "none"
+    is_par_hover = (kind_of == "par")
+    p = ((payload or {}).get("par") or {}) if is_par_hover else {}
     style = p.get("style")
     val = p.get("value")
 
-    is_toggle  = (style == "Toggle")
-    is_numeric = style in ("Float", "Int")
-    no_par     = not p  # mouse isn't over any par
+    is_toggle  = is_par_hover and (style == "Toggle")
+    is_numeric = is_par_hover and (style in ("Float", "Int"))
+    no_par     = not is_par_hover  # mouse isn't over a single par
 
     # Value ladder: hidden unless we have a numeric par to nudge.
     asyncio.run_coroutine_threadsafe(

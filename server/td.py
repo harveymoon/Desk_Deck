@@ -3,8 +3,8 @@
 A single TouchDesigner instance opens one WebSocket to /live with
 ?device=touchdesigner&t=<token>. We:
 
-  - track the latest state snapshot per kind (selected / rollover_par /
-    perf / pane_path) in a small in-memory dict;
+  - track the latest state snapshot per kind (selected / rollover /
+    perf / pane_path / status) in a small in-memory dict;
   - let provider modules (server/providers/td_*.py) subscribe to those
     kinds and push formatted text into tablet textboxes;
   - send typed commands back to TD on demand (set_par, pulse, focus_op,
@@ -23,16 +23,17 @@ from typing import Any, Callable
 
 # Public surface ------------------------------------------------------------
 
-# `state` is keyed by message "kind" — selected | rollover_op | rollover_par
-# | perf | pane_path. Always present (may be None or {}).
+# `state` is keyed by message "kind". `rollover` is the unified "thing
+# under the mouse" — its payload has a `kind_of` field (par | pargroup |
+# page | op | panel | none) and a typed sub-payload. Consumers
+# (slider/ladder/help/textbox) inspect kind_of to decide what to render.
 _state: dict[str, Any] = {
-    "selected":     None,
-    "rollover_op":  None,
-    "rollover_par": None,
-    "perf":         None,
-    "pane_path":    None,
-    "status":       None,  # ui.status string
-    "hello":        None,  # most recent hello from TD
+    "selected":  None,
+    "rollover":  None,
+    "perf":      None,
+    "pane_path": None,
+    "status":    None,  # ui.status string
+    "hello":     None,  # most recent hello from TD
 }
 
 # Subscribers per kind: each is a list of callables that take the new payload.
@@ -203,7 +204,7 @@ def subscribe(kind: str, fn: Callable[[Any], None]) -> Callable[[], None]:
 
 # Kinds TD can be told to start/stop streaming. (`hello` and `log` are
 # always pushed when relevant.)
-_STREAMABLE = {"selected", "rollover_op", "rollover_par", "perf", "pane_path", "status"}
+_STREAMABLE = {"selected", "rollover", "perf", "pane_path", "status"}
 
 
 def state(kind: str) -> Any:

@@ -93,10 +93,10 @@ diffs each enabled kind and only sends when it changes:
 | Kind          | Fired when                                      |
 |---------------|-------------------------------------------------|
 | `selected`    | `ui.panes[0].selected` changes                   |
-| `rollover_op` | `ui.rolloverOp` changes                          |
-| `rollover_par`| `ui.rolloverPar`'s `(owner.path, name, value)` changes |
+| `rollover`    | `ui.rollover` identity or value changes — payload includes `kind_of` (par / pargroup / page / op / panel / none) and a typed sub-payload |
 | `pane_path`   | `ui.panes[0].owner.path` changes                 |
 | `perf`        | `app.cookRate` / `project.cookTime` / GPU mem change |
+| `status`      | `ui.status` text changes                         |
 
 ## Debug helpers
 
@@ -113,9 +113,9 @@ op('Desk_Deck').DumpWsParams()
 
 op('Desk_Deck').ForceSubscribeAll()
 # Pretends the server told us to stream everything (selected,
-# rollover_par, rollover_op, perf, pane_path). Use to test that
-# Tick() actually fires before debugging the server-side subscribe
-# path. After this, Tick() should start emitting on the next call.
+# rollover, perf, pane_path, status). Use to test that Tick() actually
+# fires before debugging the server-side subscribe path. After this,
+# Tick() should start emitting on the next call.
 ```
 
 The connector also auto-logs:

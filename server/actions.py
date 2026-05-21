@@ -119,6 +119,20 @@ def _chrome_tab(action: dict[str, Any], payload: dict[str, Any], context: dict, 
         _focus_window({"hwnd": hwnd}, {}, context, widget)
 
 
+def _rollover_par() -> tuple[dict, dict] | None:
+    """Return (op_brief, par_snapshot) for the par currently under the
+    mouse in TD, or None if nothing is hovered or what's hovered isn't a
+    single par (could be a pargroup / page / op / panel)."""
+    ro = td.state("rollover") or {}
+    if ro.get("kind_of") != "par":
+        return None
+    op_ = ro.get("op") or {}
+    par = ro.get("par") or {}
+    if not op_.get("path") or not par.get("name"):
+        return None
+    return (op_, par)
+
+
 def _td_set_par(action: dict[str, Any], payload: dict[str, Any], context: dict, widget: dict) -> None:
     """Push a parameter value into TouchDesigner.
 
@@ -126,22 +140,22 @@ def _td_set_par(action: dict[str, Any], payload: dict[str, Any], context: dict, 
     payload may carry { "value": ... } from a slider; otherwise action.value is used.
 
     Sentinel: path / par == "$rollover" → resolve at dispatch time from
-    td.state("rollover_par") so the widget always drives whatever's under
-    the mouse RIGHT NOW. The slider runs in real par units (the server
-    retunes its min/max/step on every rollover change), so the incoming
-    value is the literal value to push — Int still gets rounded, Toggle
-    gets a 0.5 threshold for safety in case something bool-ish drives in.
+    td.state("rollover") (kind_of=="par") so the widget always drives
+    whatever's under the mouse RIGHT NOW. The slider runs in real par
+    units (the server retunes its min/max/step on every rollover change),
+    so the incoming value is the literal value to push — Int still gets
+    rounded, Toggle gets a 0.5 threshold for safety in case something
+    bool-ish drives in.
     """
     path = action.get("path") or ""
     par = action.get("par") or ""
     style = None
     if path == "$rollover" or par == "$rollover":
-        rp = td.state("rollover_par") or {}
-        op_ = (rp.get("op") or {})
-        p = (rp.get("par") or {})
-        if not op_.get("path") or not p.get("name"):
-            print("[actions] td_set_par: $rollover unresolved (no par under mouse)", flush=True)
+        ro = _rollover_par()
+        if ro is None:
+            print("[actions] td_set_par: $rollover unresolved (nothing under mouse, or not a Par)", flush=True)
             return
+        op_, p = ro
         if path == "$rollover":
             path = op_["path"]
         if par == "$rollover":
@@ -171,8 +185,8 @@ def _td_nudge_par(action: dict[str, Any], payload: dict[str, Any], context: dict
 
     payload.value carries the delta. With path/par == "$rollover" (or
     unset), targets the parameter currently under the mouse in TD.
-    Reads current value from td.state('rollover_par'), adds delta,
-    sends set_par. Honours Int by rounding."""
+    Reads current value from td.state('rollover') (kind_of=='par'), adds
+    delta, sends set_par. Honours Int by rounding."""
     path = action.get("path") or ""
     par = action.get("par") or ""
     delta = None
@@ -190,11 +204,10 @@ def _td_nudge_par(action: dict[str, Any], payload: dict[str, Any], context: dict
     cur_val = None
     par_style = None
     if (not path) or (not par) or path == "$rollover" or par == "$rollover":
-        rp = td.state("rollover_par") or {}
-        op_ = rp.get("op") or {}
-        p_meta = rp.get("par") or {}
-        if not op_.get("path") or not p_meta.get("name"):
+        ro = _rollover_par()
+        if ro is None:
             return
+        op_, p_meta = ro
         if not path or path == "$rollover":
             path = op_["path"]
         if not par or par == "$rollover":
@@ -215,17 +228,16 @@ def _td_nudge_par(action: dict[str, Any], payload: dict[str, Any], context: dict
 
 def _td_toggle_par(action: dict[str, Any], payload: dict[str, Any], context: dict, widget: dict) -> None:
     """Flip a Toggle-style parameter. With no `path`/`par`, targets the
-    parameter currently under the mouse in TD (rollover_par)."""
+    parameter currently under the mouse in TD (kind_of=='par')."""
     path = action.get("path") or ""
     par = action.get("par") or ""
     cur_val = None
     if not path or not par or path == "$rollover" or par == "$rollover":
-        rp = td.state("rollover_par") or {}
-        op_ = (rp.get("op") or {})
-        p = (rp.get("par") or {})
-        if not op_.get("path") or not p.get("name"):
-            print("[actions] td_toggle_par: nothing under mouse to toggle", flush=True)
+        ro = _rollover_par()
+        if ro is None:
+            print("[actions] td_toggle_par: nothing single-par under mouse to toggle", flush=True)
             return
+        op_, p = ro
         path = op_["path"] if not path or path == "$rollover" else path
         par = p["name"] if not par or par == "$rollover" else par
         cur_val = p.get("value")
@@ -234,14 +246,23 @@ def _td_toggle_par(action: dict[str, Any], payload: dict[str, Any], context: dic
 
 
 def _td_open_help(action: dict[str, Any], payload: dict[str, Any], context: dict, widget: dict) -> None:
-    """Open the docs.derivative.ca page for the currently-selected op."""
+    """Open the docs.derivative.ca page for the op currently under the
+    mouse — falls back to the selected op when nothing is hovered."""
     import webbrowser
-    sel = td.state("selected") or {}
-    ops = sel.get("ops") or []
-    if not ops:
-        print("[actions] td_open_help: no selection", flush=True)
+    # Prefer the rollover op (par/pargroup/page/op/panel all carry an op
+    # brief). Falls back to whatever is selected in the network pane.
+    o = None
+    ro = td.state("rollover") or {}
+    if ro.get("kind_of") in ("par", "pargroup", "page", "op", "panel"):
+        o = ro.get("op")
+    if not o:
+        sel = td.state("selected") or {}
+        ops = sel.get("ops") or []
+        if ops:
+            o = ops[0]
+    if not o:
+        print("[actions] td_open_help: nothing hovered or selected", flush=True)
         return
-    o = ops[0]
     op_type = o.get("type") or ""
     family = o.get("family") or ""
     if not op_type or not family or not op_type.endswith(family):

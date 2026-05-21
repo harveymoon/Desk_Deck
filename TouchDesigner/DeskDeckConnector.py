@@ -48,8 +48,12 @@ class DeskDeckConnector:
 
         # State the connector diffs against to emit only on change.
         self._last_selected = None      # tuple of op paths
-        self._last_rollover_op = None   # op path or None
-        self._last_rollover_par = None  # (op_path, par_name, value) tuple
+        # Unified rollover signature. Format:
+        #   (kind_of, op_path, ident_name, value)
+        # where kind_of ∈ {par, pargroup, page, op, panel, none}, ident_name
+        # is par/pargroup/page name (or None for op/panel/none) and value is
+        # only meaningful for kind_of=="par" (used to throttle jitter).
+        self._last_rollover = None
         self._last_pane_path = None
         self._last_perf = None          # (fps, cook_ms, gpu)
         self._last_status = None        # ui.status string
@@ -79,7 +83,7 @@ class DeskDeckConnector:
         self._tick_log_every = 300      # ~once every 300 ticks = ~30s at 10Hz
         self._rx_verbose_until = 2      # raw-payload print only for the first 2 rx
         self._last_status_print = 0
-        # Throttle for rollover_par value-only emits (identity changes always
+        # Throttle for rollover value-only emits (identity changes always
         # emit instantly). Frame count since last value-only emit.
         self._last_rollover_emit_frame = -999
 
@@ -199,8 +203,7 @@ class DeskDeckConnector:
         self._subs.clear()
         # Force-reset diff caches so state re-emits on reconnect.
         self._last_selected = None
-        self._last_rollover_op = None
-        self._last_rollover_par = None
+        self._last_rollover = None
         self._last_pane_path = None
         self._last_perf = None
         self._dbg("OnDisconnect — cleared subs and diff caches")
@@ -287,8 +290,7 @@ class DeskDeckConnector:
         self._subs.add(what)
         # Force a fresh emit on next tick by clearing the relevant cache.
         if   what == "selected":     self._last_selected     = None
-        elif what == "rollover_par": self._last_rollover_par = None
-        elif what == "rollover_op":  self._last_rollover_op  = None
+        elif what == "rollover":     self._last_rollover     = None
         elif what == "pane_path":    self._last_pane_path    = None
         elif what == "perf":         self._last_perf         = None
         if not was_in:
@@ -315,7 +317,7 @@ class DeskDeckConnector:
 
         if "selected" in self._subs:
             self._diff_selected()
-        if "rollover_op" in self._subs or "rollover_par" in self._subs:
+        if "rollover" in self._subs:
             self._diff_rollover()
         if "pane_path" in self._subs:
             self._diff_pane_path()
@@ -430,54 +432,146 @@ class DeskDeckConnector:
         return []
 
     def _diff_rollover(self):
-        try:
-            ro_op = ui.rolloverOp
-        except Exception:
-            ro_op = None
-        try:
-            ro_par = ui.rolloverPar
-        except Exception:
-            ro_par = None
+        """Unified rollover via ui.rollover.
 
-        ro_op_path = ro_op.path if ro_op is not None else None
-        if ro_op_path != self._last_rollover_op:
-            self._last_rollover_op = ro_op_path
-            self._stats["emit"] += 1
-            self._send({
-                "t": "state", "kind": "rollover_op",
-                "op": self._op_brief(ro_op) if ro_op is not None else None,
-            })
+        TD's ui.rollover returns whatever's directly under the mouse with
+        priority Par | ParGroup | Page | OP | PanelCOMP | None. We classify
+        the returned object and emit ONE state message with a kind_of tag
+        and a typed payload, so consumers (the slider, value ladder, help
+        button, textbox) can pick what they understand.
+        """
+        try:
+            ro = ui.rollover
+        except Exception:
+            ro = None
 
-        # Build a cheap signature. Animated / expression pars re-evaluate to
-        # a different float every tick — throttle value-only changes to
-        # ~4 Hz so we don't flood the WS + textport. Identity changes
-        # (different par hovered) always emit immediately.
-        sig = None
-        ident = None
-        if ro_par is not None and ro_par.owner is not None:
-            try:
-                v = ro_par.eval()
-            except Exception:
-                v = None
-            sig = (ro_par.owner.path, ro_par.name, v)
-            ident = (ro_par.owner.path, ro_par.name)
-        old = self._last_rollover_par
+        kind_of, op_obj, payload_extra = self._classify_rollover(ro)
+        op_brief = self._op_brief(op_obj) if op_obj is not None else None
+
+        # Identity = anything that should trigger an immediate emit (kind
+        # change, op change, par/group/page name change). Value lives only
+        # in par-kind payload and is throttled separately.
+        ident_name = None
+        if kind_of == "par":
+            ident_name = payload_extra.get("par", {}).get("name")
+        elif kind_of == "pargroup":
+            ident_name = payload_extra.get("pargroup", {}).get("name")
+        elif kind_of == "page":
+            ident_name = payload_extra.get("page", {}).get("name")
+        val = None
+        if kind_of == "par":
+            val = payload_extra.get("par", {}).get("value")
+        elif kind_of == "pargroup":
+            # tuple-ify the values list so it's hashable for the signature
+            vals = payload_extra.get("pargroup", {}).get("values") or []
+            val = tuple(vals)
+
+        sig = (kind_of, op_brief.get("path") if op_brief else None, ident_name, val)
+        old = self._last_rollover
         if sig == old:
             return
-        old_ident = (old[0], old[1]) if old else None
-        ident_changed = ident != old_ident
+        old_ident = old[:3] if old else None
+        ident_changed = sig[:3] != old_ident
         now_frame = self._stats["tick"]
+        # Same identity, value just jittered — throttle value-only emits.
         if not ident_changed and (now_frame - self._last_rollover_emit_frame) < 3:
-            # Same par, value just jittered, last emit was <3 ticks ago — skip.
             return
-        self._last_rollover_par = sig
+        self._last_rollover = sig
         self._last_rollover_emit_frame = now_frame
         self._stats["emit"] += 1
-        self._send({
-            "t": "state", "kind": "rollover_par",
-            "op":  self._op_brief(ro_par.owner) if ro_par is not None else None,
-            "par": self._par_snapshot(ro_par)  if ro_par is not None else None,
-        })
+        msg = {
+            "t": "state", "kind": "rollover",
+            "kind_of": kind_of,
+            "op": op_brief,
+        }
+        msg.update(payload_extra)
+        self._send(msg)
+
+    def _classify_rollover(self, ro):
+        """Return (kind_of, op_obj_or_None, payload_extra_dict).
+
+        kind_of priority follows TD's docs: Par > ParGroup > Page > OP >
+        Panel. Identifying by class name (via MRO) avoids importing
+        td.Par etc., which is brittle across TD builds.
+        """
+        if ro is None:
+            return ("none", None, {})
+        mro_names = {c.__name__ for c in type(ro).__mro__}
+
+        if "Par" in mro_names:
+            owner = getattr(ro, "owner", None)
+            return ("par", owner, {"par": self._par_snapshot(ro)})
+
+        if "ParGroup" in mro_names:
+            owner = getattr(ro, "owner", None)
+            return ("pargroup", owner, {"pargroup": self._pargroup_snapshot(ro)})
+
+        if "Page" in mro_names:
+            owner = getattr(ro, "owner", None)
+            return ("page", owner, {"page": self._page_snapshot(ro)})
+
+        # Anything else with a .path is an op-ish thing. Use ui.rolloverPanel
+        # to distinguish a Panel hover from an OP-in-network hover (both can
+        # be PanelCOMPs per the docs).
+        if "OP" in mro_names or hasattr(ro, "path"):
+            try:
+                panel = ui.rolloverPanel
+            except Exception:
+                panel = None
+            kind_of = "panel" if (panel is not None and panel is ro) else "op"
+            return (kind_of, ro, {})
+
+        return ("none", None, {})
+
+    def _pargroup_snapshot(self, pg):
+        try:
+            pars = list(getattr(pg, "pars", []) or [])
+            par_names = [getattr(p, "name", "?") for p in pars]
+            values    = [self._safe_eval(p)      for p in pars]
+            style = getattr(pg, "style", None)
+            out = {
+                "name":   getattr(pg, "name", None),
+                "label":  getattr(pg, "label", None) or getattr(pg, "name", None),
+                "style":  style,
+                "pars":   par_names,
+                "values": values,
+                # normMin/normMax are per-par on TD's side. Borrow from
+                # the first par so consumers can render a single-range
+                # slider/picker without round-tripping.
+                "normMin": getattr(pars[0], "normMin", None) if pars else None,
+                "normMax": getattr(pars[0], "normMax", None) if pars else None,
+            }
+            # Color tag for RGB / RGBA pargroups so the tablet can decide
+            # to render a colour swatch / picker. Values stay 0..1 floats
+            # exactly as TD stores them — no conversion server-side.
+            if style in ("RGB", "RGBA") and len(values) in (3, 4):
+                try:
+                    chans = [float(v) for v in values]
+                    out["is_color"] = True
+                    out["rgba"] = chans + ([1.0] if len(chans) == 3 else [])
+                    out["hex"] = "#" + "".join(
+                        f"{max(0, min(255, int(round(c * 255)))):02X}"
+                        for c in chans[:3]
+                    )
+                except (TypeError, ValueError):
+                    pass
+            return out
+        except Exception as e:
+            return {"name": getattr(pg, "name", "?"), "error": str(e)}
+
+    def _page_snapshot(self, pg):
+        try:
+            return {
+                "name":     getattr(pg, "name", None),
+                "label":    getattr(pg, "label", None) or getattr(pg, "name", None),
+                "par_count": len(list(getattr(pg, "pars", []) or [])),
+            }
+        except Exception as e:
+            return {"name": getattr(pg, "name", "?"), "error": str(e)}
+
+    def _safe_eval(self, par):
+        try:    return par.eval()
+        except Exception: return None
 
     def _diff_pane_path(self):
         try:
@@ -724,8 +818,7 @@ class DeskDeckConnector:
         print(f"  server subscribed: {subs_str}")
         print(f"  stats:             rx={rx} tx={tx} emit={em} tick={tk}")
         print(f"  last selected:     {self._last_selected}")
-        print(f"  last rollover_op:  {self._last_rollover_op}")
-        print(f"  last rollover_par: {self._last_rollover_par}")
+        print(f"  last rollover:     {self._last_rollover}")
         print(f"  last pane_path:    {self._last_pane_path}")
         print(f"  last perf:         {self._last_perf}")
         print(f"  macros:            {sorted(self._macros)}")
@@ -750,11 +843,10 @@ class DeskDeckConnector:
         """For local testing without the server: pretend the server told us
         to stream every kind. Call once, then Tick() will emit state
         snapshots even before the server's `subscribe` cmd arrives."""
-        for k in ("selected", "rollover_op", "rollover_par", "perf", "pane_path"):
+        for k in ("selected", "rollover", "perf", "pane_path", "status"):
             self._subs.add(k)
         self._last_selected = None
-        self._last_rollover_op = None
-        self._last_rollover_par = None
+        self._last_rollover = None
         self._last_pane_path = None
         self._last_perf = None
         self._dbg(f"ForceSubscribeAll → subs={sorted(self._subs)}")
