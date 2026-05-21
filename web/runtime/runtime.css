@@ -303,16 +303,17 @@ html, body {
 .dd-value-ladder.is-disabled { opacity: 0.4; pointer-events: none; }
 .dd-value-ladder-label { line-height: 1; }
 .dd-ladder-stack {
-  position: absolute;
-  left: 50%;
-  bottom: calc(100% + 8px);
+  /* Fixed positioning so the stack escapes any scroll/overflow
+     clipping. JS computes left/bottom from the button's bounding
+     rect on pointerdown. transform centers it horizontally. */
+  position: fixed;
   transform: translateX(-50%);
   display: flex;
   flex-direction: column;
   background: var(--surface-2);
   border: var(--border-w) solid var(--accent);
   padding: 6px 0;
-  z-index: 100;
+  z-index: 1000;
   font-family: var(--font-mono);
   font-size: 16px;
   pointer-events: none;
@@ -914,19 +915,21 @@ body.has-overlay .dd-sidebar { display: none; }
   cursor: grabbing;
 }
 .dd-pp-ladder-stack {
-  position: absolute;
-  bottom: calc(100% + 6px);
-  left: 50%;
-  transform: translateX(-50%);
+  /* Fixed positioning + huge z-index so the stack always floats above
+     everything — scrolling parents (.dd-pp-body has overflow-y:auto)
+     would otherwise clip an absolutely-positioned popup. JS sets
+     left/bottom from the button's getBoundingClientRect on pointerdown. */
+  position: fixed;
   display: none;
   flex-direction: column;
   background: var(--surface);
   border: 1px solid var(--accent);
-  z-index: 200;
+  z-index: 1000;
   font-family: var(--font-mono);
   font-size: 12px;
   min-width: 64px;
   pointer-events: none;
+  transform: translateX(-50%);
 }
 .dd-pp-ladder-stack.is-visible { display: flex; }
 .dd-pp-ladder-row {

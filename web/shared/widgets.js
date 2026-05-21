@@ -537,6 +537,12 @@ function renderValueLadder(w, emit) {
     startY = e.clientY;
     cursorX = e.clientX;
     el.classList.add("is-active");
+    // Same fixed-position trick as the param-panel inline ladder so
+    // the popup always floats above the rest of the UI regardless of
+    // overflow-clipping containers.
+    const r = el.getBoundingClientRect();
+    stack.style.left = `${r.left + r.width / 2}px`;
+    stack.style.bottom = `${window.innerHeight - r.top + 8}px`;
     stack.classList.add("is-visible");
     highlight();
     try { el.setPointerCapture(e.pointerId); } catch {}
@@ -879,6 +885,12 @@ function makeInlineLadder({ isInt, onNudge }) {
     chosenIdx = Math.floor(magnitudes.length / 2);
     startX = e.clientX; startY = e.clientY; cursorX = e.clientX;
     el.classList.add("is-active");
+    // Position the stack via fixed coords from the button's rect so
+    // it floats above every other UI element regardless of which
+    // overflow-clipping container the button sits in.
+    const r = el.getBoundingClientRect();
+    stack.style.left = `${r.left + r.width / 2}px`;
+    stack.style.bottom = `${window.innerHeight - r.top + 6}px`;
     stack.classList.add("is-visible");
     highlight();
     try { el.setPointerCapture(e.pointerId); } catch {}
