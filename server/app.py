@@ -227,7 +227,24 @@ def _on_td_rollover_par(payload: dict | None) -> None:
             nmax = float(p.get("normMax") or 1.0)
             if nmax <= nmin:                    # degenerate range → fall back
                 nmin, nmax = (v - 1.0, v + 1.0) if v else (0.0, 1.0)
-            span = nmax - nmin
+            # normMin/normMax are TD's *soft* UI range. The actual par
+            # value is free to live outside it (e.g. trail.wlength=60 with
+            # normMax=10). Expand the slider range so the thumb lands at
+            # the real value's position — preserves the natural UI range
+            # when the value is inside it, and grows on demand when it
+            # isn't. Hard clamps (clampMin/clampMax) still cap the range.
+            lo = min(nmin, v)
+            hi = max(nmax, v)
+            cmin = p.get("clampMin"); cmax = p.get("clampMax")
+            if cmin is not None:
+                try: lo = max(lo, float(cmin))
+                except (TypeError, ValueError): pass
+            if cmax is not None:
+                try: hi = min(hi, float(cmax))
+                except (TypeError, ValueError): pass
+            if hi <= lo:                        # safety guard after clamping
+                hi = lo + max(abs(lo) * 0.01, 1.0)
+            span = hi - lo
             if p.get("style") == "Int":
                 step = 1
             else:
@@ -239,8 +256,8 @@ def _on_td_rollover_par(payload: dict | None) -> None:
                 step = max(10 ** exp, 1e-4)
             label = (p.get("name") or "VAL").upper()
             slider_patch.update({
-                "min":   nmin,
-                "max":   nmax,
+                "min":   lo,
+                "max":   hi,
                 "step":  step,
                 "label": label,
                 "value": v,
