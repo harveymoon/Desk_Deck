@@ -457,20 +457,22 @@ class DeskDeckConnector:
         """
         ws = op("ws")
         ws_active = bool(ws and ws.par.active.eval()) if ws is not None else False
+        subs_str = sorted(self._subs) if self._subs else "(none — server has not asked)"
+        rx = self._stats["rx"]; tx = self._stats["tx"]
+        em = self._stats["emit"]; tk = self._stats["tick"]
         print()
-        print("[DeskDeck Status] ──────────────────────────────────────")
+        print("[DeskDeck Status] ----------------------------------------")
         print(f"  ws DAT present:    {ws is not None}")
         print(f"  ws active:         {ws_active}")
-        print(f"  server subscribed: {sorted(self._subs) or '(none — server hasn\\'t asked)'}")
-        print(f"  stats:             rx={self._stats['rx']} tx={self._stats['tx']} "
-              f"emit={self._stats['emit']} tick={self._stats['tick']}")
+        print(f"  server subscribed: {subs_str}")
+        print(f"  stats:             rx={rx} tx={tx} emit={em} tick={tk}")
         print(f"  last selected:     {self._last_selected}")
         print(f"  last rollover_op:  {self._last_rollover_op}")
         print(f"  last rollover_par: {self._last_rollover_par}")
         print(f"  last pane_path:    {self._last_pane_path}")
         print(f"  last perf:         {self._last_perf}")
         print(f"  macros:            {sorted(self._macros)}")
-        print("[DeskDeck Status] ──────────────────────────────────────")
+        print("[DeskDeck Status] ----------------------------------------")
         print()
 
     def DumpWsParams(self):
