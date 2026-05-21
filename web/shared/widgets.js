@@ -748,42 +748,69 @@ function renderParamPanel(w, emit) {
   return el;
 }
 
-// Collapse a flat par list into groups. Pars carrying `tuplet` info
-// (size > 1) collect into one group; everything else stays a 1-par
-// group. Order is preserved.
+// Collapse a flat par list into groups. Tries TWO detection paths:
+//
+//   1. Name-pattern colour detection: `<base>r`, `<base>g`, `<base>b`
+//      (optionally `<base>a`) all numeric → an RGB / RGBA group. Works
+//      even when the TD connector didn't / couldn't tag tuplet info
+//      (older code, missing parGroup.style, etc.).
+//
+//   2. tuplet metadata from the par snapshot (when present).
+//
+//   3. Fallback: single-par group.
+//
+// Order is preserved. Same-tuplet pars must be consecutive (which TD's
+// pages always are).
 function groupParsByTuplet(pars) {
   const groups = [];
-  let cur = null;
-  for (const p of pars) {
+  let i = 0;
+  while (i < pars.length) {
+    const colour = tryColorTuplet(pars, i);
+    if (colour) { groups.push(colour); i += colour.pars.length; continue; }
+    const p = pars[i];
     const t = p.tuplet;
     if (t && t.size > 1) {
-      if (cur && cur.name === t.name && cur.pars.length < t.size) {
-        cur.pars.push(p);
-        if (cur.pars.length === cur.size) { groups.push(cur); cur = null; }
-      } else {
-        if (cur) { groups.push(cur); }
-        cur = {
-          name:  t.name,
-          label: t.label || t.name,
-          style: t.style || null,
-          size:  t.size,
-          pars:  [p],
-        };
-        if (cur.pars.length === cur.size) { groups.push(cur); cur = null; }
+      const g = { name: t.name, label: t.label || t.name, style: t.style || null, size: t.size, pars: [] };
+      while (i < pars.length && pars[i].tuplet && pars[i].tuplet.name === t.name && g.pars.length < t.size) {
+        g.pars.push(pars[i]); i++;
       }
-    } else {
-      if (cur) { groups.push(cur); cur = null; }
-      groups.push({
-        name:  p.name,
-        label: p.label || p.name,
-        style: p.style,
-        size:  1,
-        pars:  [p],
-      });
+      groups.push(g);
+      continue;
+    }
+    groups.push({ name: p.name, label: p.label || p.name, style: p.style, size: 1, pars: [p] });
+    i++;
+  }
+  return groups;
+}
+
+function tryColorTuplet(pars, start) {
+  if (start + 2 >= pars.length) return null;
+  const a = pars[start], b = pars[start + 1], c = pars[start + 2];
+  const isNum = (x) => x && (x.style === "Float" || x.style === "Int");
+  if (!isNum(a) || !isNum(b) || !isNum(c)) return null;
+  const aN = (a.name || "").toLowerCase();
+  const bN = (b.name || "").toLowerCase();
+  const cN = (c.name || "").toLowerCase();
+  if (aN.length < 2 || bN.length < 2 || cN.length < 2) return null;
+  if (aN.slice(-1) !== "r" || bN.slice(-1) !== "g" || cN.slice(-1) !== "b") return null;
+  const base = aN.slice(0, -1);
+  if (bN.slice(0, -1) !== base || cN.slice(0, -1) !== base) return null;
+
+  // Optional 4th channel = <base>a
+  let chans = [a, b, c];
+  let style = "RGB";
+  if (start + 3 < pars.length) {
+    const d = pars[start + 3];
+    if (isNum(d) && (d.name || "").toLowerCase() === base + "a") {
+      chans = [a, b, c, d];
+      style = "RGBA";
     }
   }
-  if (cur) groups.push(cur);
-  return groups;
+  // Prefer the tuplet's pargroup label when TD provided one (e.g. "Color"),
+  // otherwise capitalise the base name.
+  const tupletLabel = (a.tuplet && a.tuplet.label) || null;
+  const label = tupletLabel || (base.charAt(0).toUpperCase() + base.slice(1) || base);
+  return { name: base, label, style, size: chans.length, pars: chans };
 }
 
 // Dispatch: render one row per group. Color groups (RGB/RGBA) get
