@@ -186,6 +186,13 @@ async def _on_startup() -> None:
     # par hovers show the slider/ladder/toggle right now; other kinds
     # leave them hidden until we add dedicated widgets.
     td.subscribe("rollover", _on_td_rollover)
+    # Selection changes push the whole op's pages/pars to td_pars so the
+    # tablet's param panel can render an editable view of every par on
+    # the first selected op.
+    td.subscribe("selected", _on_td_selected)
+    # Rollover identity changes also highlight the matching row in the
+    # param panel — only when the hovered par lives on the selected op.
+    td.subscribe("rollover", _on_td_rollover_for_highlight)
 
     print("[startup] watcher + hot-reload + window/desktop pollers running", flush=True)
 
@@ -278,6 +285,56 @@ def _on_td_rollover(payload: dict | None) -> None:
         hub.push_widget_update("td_rollover_toggle",
                                {"active": is_on, "hidden": not is_toggle or no_par,
                                 "label": label}),
+        _loop,
+    )
+
+
+def _on_td_selected(payload: dict | None) -> None:
+    """Push a fresh op_path + pages snapshot to the td_pars param panel
+    whenever TD reports a new selection (or a re-emit after a tablet
+    edit). Hides the panel when nothing is selected."""
+    if _loop is None:
+        return
+    ops = ((payload or {}).get("ops") or [])
+    pages = ((payload or {}).get("pages") or [])
+    if not ops:
+        asyncio.run_coroutine_threadsafe(
+            hub.push_widget_update("td_pars", {"op": None, "pages": [], "hidden": False}),
+            _loop,
+        )
+        return
+    asyncio.run_coroutine_threadsafe(
+        hub.push_widget_update("td_pars", {
+            "op": ops[0],
+            "pages": pages,
+            "hidden": False,
+        }),
+        _loop,
+    )
+
+
+def _on_td_rollover_for_highlight(payload: dict | None) -> None:
+    """Highlight the par-panel row corresponding to the par under the
+    mouse, but only when it lives on the currently-displayed op."""
+    if _loop is None:
+        return
+    if (payload or {}).get("kind_of") != "par":
+        # Clear the highlight when the hover leaves a par.
+        asyncio.run_coroutine_threadsafe(
+            hub.push_widget_update("td_pars", {"highlight": None}),
+            _loop,
+        )
+        return
+    op_ = (payload.get("op") or {})
+    par = (payload.get("par") or {})
+    sel = td.state("selected") or {}
+    sel_ops = sel.get("ops") or []
+    sel_path = sel_ops[0].get("path") if sel_ops else None
+    if not sel_path or sel_path != op_.get("path"):
+        # Hovered par lives on a different op — don't touch the panel.
+        return
+    asyncio.run_coroutine_threadsafe(
+        hub.push_widget_update("td_pars", {"highlight": par.get("name")}),
         _loop,
     )
 

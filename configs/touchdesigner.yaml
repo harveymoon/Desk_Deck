@@ -6,140 +6,14 @@ canvas:
   height: 1000
   theme: midnight
 widgets:
-  # ─── Top hotkey row — all 180×100 ───
-  - id: save
-    type: button
-    x: 40
-    y: 24
-    w: 180
-    h: 100
-    props:
-      label: SAVE
-      action: { type: hotkey, keys: ctrl+s }
-
-  - id: perform
-    type: button
-    x: 240
-    y: 24
-    w: 180
-    h: 100
-    props:
-      label: PERFORM
-      action: { type: td_macro, name: perform_mode }
-
-  - id: palette
-    type: button
-    x: 440
-    y: 24
-    w: 180
-    h: 100
-    props:
-      label: PALETTE
-      action: { type: hotkey, keys: ctrl+shift+s }
-
-  - id: textport
-    type: button
-    x: 640
-    y: 24
-    w: 180
-    h: 100
-    props:
-      label: TEXTPORT
-      action: { type: hotkey, keys: alt+t }
-
-  # ─── Live TD bridge (Desk_Deck.tox must be loaded + connected) ───
-
-  - id: td_sel
-    type: textbox
-    x: 40
-    y: 160
-    w: 1080
-    h: 48
-    props:
-      monospace: true
-      max_lines: 2
-      source: td_selected
-
-  - id: td_help
-    type: button
-    x: 1140
-    y: 160
-    w: 200
-    h: 48
-    props:
-      label: HELP
-      action: { type: td_open_help }
-
-  - id: td_help_py
-    type: button
-    x: 1356
-    y: 160
-    w: 200
-    h: 48
-    props:
-      label: PY HELP
-      action: { type: td_open_help, python: true }
-
-  - id: td_rollover
-    type: textbox
-    x: 40
-    y: 224
-    w: 680
-    h: 60
-    props:
-      monospace: true
-      max_lines: 2
-      source: td_rollover
-
-  # Value ladder: hold and drag UP/DOWN to pick magnitude (10/1/0.1/.01/.001),
-  # then LEFT/RIGHT to nudge. Always visible alongside the slider so it
-  # works for Float / Int / Toggle. For Toggle it's effectively a no-op
-  # (delta against a bool yields 0/1), so we hide it too on Toggle.
-  - id: td_rollover_ladder
-    type: value_ladder
-    x: 736
-    y: 224
-    w: 80
-    h: 60
-    props:
-      label: "±"
-      magnitudes: [10, 1, 0.1, 0.01, 0.001]
-      action: { type: td_nudge_par, path: "$rollover", par: "$rollover" }
-
-  # Slider and toggle share the same slot. Only one is ever visible at a
-  # time (server pushes hidden:true to whichever doesn't match the par
-  # style under the mouse) so they don't overlap visually — the visible
-  # one fills the whole rollover-control area.
-  - id: td_rollover_drive
-    type: slider
-    x: 832
-    y: 224
-    w: 724
-    h: 60
-    props:
-      label: VAL
-      min: 0
-      max: 1
-      step: 0.001
-      orientation: horizontal
-      action: { type: td_set_par, path: "$rollover", par: "$rollover" }
-
-  - id: td_rollover_toggle
-    type: button
-    x: 832
-    y: 224
-    w: 724
-    h: 60
-    props:
-      label: "(no toggle)"
-      action: { type: td_toggle_par }
+  # ─── LEFT COLUMN: status bar on top, console fills the rest ───
 
   - id: td_status
     type: textbox
-    x: 40
-    y: 300
-    w: 1516
-    h: 40
+    x: 24
+    y: 24
+    w: 800
+    h: 44
     props:
       monospace: true
       max_lines: 1
@@ -147,11 +21,109 @@ widgets:
 
   - id: td_log
     type: textbox
-    x: 40
-    y: 356
-    w: 1516
-    h: 624
+    x: 24
+    y: 84
+    w: 800
+    h: 892
     props:
       monospace: true
-      max_lines: 400
+      max_lines: 600
       source: td_textport
+
+  # ─── RIGHT COLUMN: 4 quick buttons up top, par panel below ───
+
+  - id: save
+    type: button
+    x: 848
+    y: 24
+    w: 174
+    h: 96
+    props:
+      label: SAVE
+      action: { type: hotkey, keys: ctrl+s }
+
+  - id: perform
+    type: button
+    x: 1030
+    y: 24
+    w: 174
+    h: 96
+    props:
+      label: PERFORM
+      action: { type: td_macro, name: perform_mode }
+
+  - id: palette
+    type: button
+    x: 1212
+    y: 24
+    w: 174
+    h: 96
+    props:
+      label: PALETTE
+      action: { type: hotkey, keys: ctrl+shift+s }
+
+  - id: textport
+    type: button
+    x: 1394
+    y: 24
+    w: 174
+    h: 96
+    props:
+      label: TEXTPORT
+      action: { type: hotkey, keys: alt+t }
+
+  # Selection summary (one-liner: which op is being shown below).
+  - id: td_sel
+    type: textbox
+    x: 848
+    y: 132
+    w: 540
+    h: 40
+    props:
+      monospace: true
+      max_lines: 1
+      source: td_selected
+
+  - id: td_help
+    type: button
+    x: 1396
+    y: 132
+    w: 84
+    h: 40
+    props:
+      label: HELP
+      action: { type: td_open_help }
+
+  - id: td_help_py
+    type: button
+    x: 1484
+    y: 132
+    w: 84
+    h: 40
+    props:
+      label: PY
+      action: { type: td_open_help, python: true }
+
+  # Rollover one-liner (parameter / pargroup / page / op under the mouse).
+  - id: td_rollover
+    type: textbox
+    x: 848
+    y: 184
+    w: 720
+    h: 40
+    props:
+      monospace: true
+      max_lines: 1
+      source: td_rollover
+
+  # Live par editor for whatever op is selected in TD. Pages render as
+  # tabs, every par becomes an editable row. Mousing over a par in TD
+  # highlights its row here.
+  - id: td_pars
+    type: param_panel
+    x: 848
+    y: 236
+    w: 720
+    h: 740
+    props:
+      action: { type: td_set_par }

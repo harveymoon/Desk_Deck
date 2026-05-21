@@ -73,6 +73,9 @@ export function updateWidget(el, widget, patch) {
       el.disabled = !!patch.disabled;
       el.classList.toggle("is-disabled", !!patch.disabled);
     }
+  } else if (widget.type === "param_panel") {
+    if (el && typeof el._patch === "function") el._patch(patch);
+    if ("hidden" in patch) el.style.display = patch.hidden ? "none" : "";
   }
 }
 
@@ -586,6 +589,232 @@ function renderValueLadder(w, emit) {
   return el;
 }
 
+// ───────── Param Panel (live editor for a TD op's pars, page-tabbed) ─────────
+function renderParamPanel(w, emit) {
+  const el = document.createElement("div");
+  el.className = "dd-widget dd-param-panel";
+  const header = document.createElement("div");
+  header.className = "dd-pp-header";
+  const opLbl = document.createElement("div");
+  opLbl.className = "dd-pp-op";
+  opLbl.textContent = "(no op selected)";
+  header.appendChild(opLbl);
+  el.appendChild(header);
+  const tabs = document.createElement("div");
+  tabs.className = "dd-pp-tabs";
+  el.appendChild(tabs);
+  const body = document.createElement("div");
+  body.className = "dd-pp-body";
+  el.appendChild(body);
+
+  let state = { op: null, pages: [], activeIdx: 0, highlight: null };
+
+  function renderRows() {
+    body.innerHTML = "";
+    const page = state.pages[state.activeIdx];
+    if (!page) {
+      body.innerHTML = "<div class='dd-pp-empty'>(no pars)</div>";
+      return;
+    }
+    const path = state.op ? state.op.path : "";
+    for (const par of (page.pars || [])) {
+      body.appendChild(renderParRow(par, path, state.highlight, emit));
+    }
+  }
+
+  function renderTabs() {
+    tabs.innerHTML = "";
+    state.pages.forEach((pg, i) => {
+      const t = document.createElement("button");
+      t.className = "dd-pp-tab" + (i === state.activeIdx ? " is-active" : "");
+      t.textContent = pg.label || pg.name || "?";
+      t.addEventListener("click", () => {
+        if (state.activeIdx === i) return;
+        state.activeIdx = i;
+        renderTabs();
+        renderRows();
+      });
+      tabs.appendChild(t);
+    });
+  }
+
+  el._patch = (patch) => {
+    let needRows = false, needTabs = false;
+    if ("op" in patch) {
+      state.op = patch.op;
+      opLbl.textContent = patch.op
+        ? `${patch.op.name}  ·  ${patch.op.type || ""}  ·  ${patch.op.path}`
+        : "(no op selected)";
+    }
+    if ("pages" in patch) {
+      state.pages = patch.pages || [];
+      // Keep the same active page across re-emits if it still exists.
+      if (state.activeIdx >= state.pages.length) state.activeIdx = 0;
+      needTabs = true;
+      needRows = true;
+    }
+    if ("highlight" in patch) {
+      state.highlight = patch.highlight;
+      // Cheap path: toggle the class on existing rows instead of rebuilding.
+      body.querySelectorAll(".dd-pp-row").forEach((row) => {
+        row.classList.toggle("is-hot", row.dataset.par === state.highlight);
+      });
+    }
+    if (needTabs) renderTabs();
+    if (needRows) renderRows();
+  };
+
+  // Initial empty render
+  renderTabs();
+  renderRows();
+  return el;
+}
+
+function renderParRow(par, opPath, highlight, emit) {
+  const row = document.createElement("div");
+  row.className = "dd-pp-row";
+  row.dataset.par = par.name || "";
+  if (highlight && highlight === par.name) row.classList.add("is-hot");
+
+  const lbl = document.createElement("div");
+  lbl.className = "dd-pp-lbl";
+  lbl.textContent = par.label || par.name || "?";
+  row.appendChild(lbl);
+
+  const ctl = document.createElement("div");
+  ctl.className = "dd-pp-ctl";
+  ctl.appendChild(parRowControl(par, opPath, emit));
+  row.appendChild(ctl);
+
+  return row;
+}
+
+function parRowControl(par, opPath, emit) {
+  const style = par.style || "Float";
+  const wid = "td_pars";  // outbound value events route through this widget id
+  const send = (value) => {
+    emit({ t: "value", id: wid, value,
+           payload: { path: opPath, par: par.name, style } });
+  };
+
+  if (style === "Toggle") {
+    const btn = document.createElement("button");
+    btn.className = "dd-pp-toggle";
+    let on = !!par.value;
+    btn.classList.toggle("is-on", on);
+    btn.textContent = on ? "ON" : "OFF";
+    btn.addEventListener("click", () => {
+      on = !on;
+      btn.classList.toggle("is-on", on);
+      btn.textContent = on ? "ON" : "OFF";
+      send(on);
+    });
+    return btn;
+  }
+
+  if (style === "Menu") {
+    const sel = document.createElement("select");
+    sel.className = "dd-pp-menu";
+    const opts = par.menu || [];
+    for (const m of opts) {
+      const o = document.createElement("option");
+      o.value = m.name;
+      o.textContent = m.label || m.name;
+      if (m.name === par.value) o.selected = true;
+      sel.appendChild(o);
+    }
+    sel.addEventListener("change", () => send(sel.value));
+    return sel;
+  }
+
+  if (style === "Str") {
+    const wrap = document.createElement("div");
+    wrap.className = "dd-pp-str";
+    const inp = document.createElement("input");
+    inp.type = "text";
+    inp.value = (par.value ?? "");
+    inp.addEventListener("change", () => send(inp.value));
+    wrap.appendChild(inp);
+    return wrap;
+  }
+
+  // Float / Int / anything numeric → mini slider in real par units.
+  const wrap = document.createElement("div");
+  wrap.className = "dd-pp-slider";
+  let val = (typeof par.value === "number") ? par.value :
+            (par.value != null ? Number(par.value) : 0);
+  let nmin = (typeof par.normMin === "number") ? par.normMin : 0;
+  let nmax = (typeof par.normMax === "number") ? par.normMax : 1;
+  if (nmax <= nmin) { nmin = val - 1; nmax = val + 1; }
+  let lo = Math.min(nmin, val);
+  let hi = Math.max(nmax, val);
+  if (par.clampMin != null) lo = Math.max(lo, Number(par.clampMin));
+  if (par.clampMax != null) hi = Math.min(hi, Number(par.clampMax));
+  if (hi <= lo) hi = lo + 1;
+  const isInt = (style === "Int");
+  const step = isInt ? 1 : Math.max((hi - lo) / 1000, 1e-4);
+
+  const track = document.createElement("div");
+  track.className = "dd-pp-slider-track";
+  const fill = document.createElement("div");
+  fill.className = "dd-pp-slider-fill";
+  track.appendChild(fill);
+  const readout = document.createElement("div");
+  readout.className = "dd-pp-slider-val";
+
+  function fmt(v) {
+    if (isInt) return `${Math.round(v)}`;
+    const ax = Math.abs(v);
+    if (ax >= 100 || ax === 0) return v.toFixed(2);
+    if (ax >= 1) return v.toFixed(3);
+    return v.toFixed(4);
+  }
+  function paint(v) {
+    const pct = (v - lo) / (hi - lo);
+    fill.style.width = `${Math.max(0, Math.min(1, pct)) * 100}%`;
+    readout.textContent = fmt(v);
+  }
+  paint(val);
+
+  let dragging = false, lastSent = null, throttleTimer = null;
+  function flush() {
+    throttleTimer = null;
+    if (val === lastSent) return;
+    lastSent = val;
+    send(isInt ? Math.round(val) : val);
+  }
+  function setFromEvent(e) {
+    const rect = track.getBoundingClientRect();
+    let pct = (e.clientX - rect.left) / rect.width;
+    pct = Math.max(0, Math.min(1, pct));
+    let nv = lo + pct * (hi - lo);
+    nv = Math.round(nv / step) * step;
+    val = Math.max(lo, Math.min(hi, nv));
+    paint(val);
+    if (throttleTimer === null) throttleTimer = setTimeout(flush, 70);
+  }
+  track.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    dragging = true;
+    try { track.setPointerCapture(e.pointerId); } catch {}
+    setFromEvent(e);
+  });
+  track.addEventListener("pointermove", (e) => { if (dragging) setFromEvent(e); });
+  const end = (e) => {
+    if (!dragging) return;
+    dragging = false;
+    try { track.releasePointerCapture(e.pointerId); } catch {}
+    if (throttleTimer !== null) { clearTimeout(throttleTimer); throttleTimer = null; }
+    flush();
+  };
+  track.addEventListener("pointerup", end);
+  track.addEventListener("pointercancel", end);
+
+  wrap.appendChild(track);
+  wrap.appendChild(readout);
+  return wrap;
+}
+
 const RENDERERS = {
   button: renderButton,
   label: renderLabel,
@@ -595,4 +824,5 @@ const RENDERERS = {
   rotary: renderRotary,
   window_list: renderWindowList,
   value_ladder: renderValueLadder,
+  param_panel: renderParamPanel,
 };

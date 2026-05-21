@@ -48,6 +48,10 @@ class DeskDeckConnector:
 
         # State the connector diffs against to emit only on change.
         self._last_selected = None      # tuple of op paths
+        # Set after we apply a set_par on the wire — forces the next tick
+        # to re-emit the selected snapshot so the tablet's par-panel
+        # values stay in sync with whatever just changed.
+        self._selected_dirty = False
         # Unified rollover signature. Format:
         #   (kind_of, op_path, ident_name, value)
         # where kind_of ∈ {par, pargroup, page, op, panel, none}, ident_name
@@ -263,6 +267,14 @@ class DeskDeckConnector:
         if par is None:
             raise KeyError(f"no par {msg['par']!r} on {msg['path']!r}")
         par.val = msg["value"]
+        # If the edited par lives on the currently-selected op, ask the
+        # next tick to re-emit the selected snapshot so the tablet's
+        # par-panel readouts stay in sync with the new value.
+        try:
+            if self._last_selected and op_.path in self._last_selected:
+                self._selected_dirty = True
+        except Exception:
+            pass
 
     def _handle_pulse(self, msg):
         op(msg["path"]).par[msg["par"]].pulse()
@@ -342,14 +354,63 @@ class DeskDeckConnector:
     def _diff_selected(self):
         ops = self._selected_ops()
         paths = tuple(o.path for o in ops if o is not None)
-        if paths == self._last_selected:
+        # Re-emit when:
+        #   - selection identity changed (new op picked), OR
+        #   - we tablet-edited a par and need to refresh values (_selected_dirty)
+        if paths == self._last_selected and not self._selected_dirty:
             return
         self._last_selected = paths
+        self._selected_dirty = False
         self._stats["emit"] += 1
+        # For the FIRST selected op, also dump all its pars (grouped by
+        # page) so the tablet can render an editable parameter panel
+        # without an extra round-trip. Cap so we don't blow the WS frame
+        # on huge ops — the user can still edit anything visible there.
+        pages_payload = []
+        if ops:
+            try:
+                pages_payload = self._op_pages_snapshot(ops[0])
+            except Exception as e:
+                self._dbg(f"op_pages_snapshot failed: {e}")
         self._send({
             "t": "state", "kind": "selected",
             "ops": [self._op_brief(o) for o in ops if o is not None],
+            "pages": pages_payload,
         })
+
+    def _op_pages_snapshot(self, the_op, par_cap=400):
+        """Return [{name, label, pars: [par_snapshot, ...]}] for an op.
+
+        Skips invisible pars (those with .enable False AND no value the
+        user could care about would be a stretch; we keep them all for
+        now — invisible pars still display in TD). Caps total par count
+        across all pages so a 1000-par shader doesn't crash the wire."""
+        pages = []
+        emitted = 0
+        try:
+            op_pages = list(getattr(the_op, "pages", []) or [])
+        except Exception:
+            op_pages = []
+        for pg in op_pages:
+            try:
+                page_name  = getattr(pg, "name", "?")
+                page_label = getattr(pg, "label", None) or page_name
+                pars       = list(getattr(pg, "pars", []) or [])
+            except Exception:
+                continue
+            page_pars = []
+            for p in pars:
+                if emitted >= par_cap:
+                    break
+                try:
+                    page_pars.append(self._par_snapshot(p))
+                    emitted += 1
+                except Exception:
+                    continue
+            pages.append({"name": page_name, "label": page_label, "pars": page_pars})
+            if emitted >= par_cap:
+                break
+        return pages
 
     def _selected_ops(self):
         """Return the user's current op selection.

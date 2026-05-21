@@ -147,9 +147,12 @@ def _td_set_par(action: dict[str, Any], payload: dict[str, Any], context: dict, 
     rounded, Toggle gets a 0.5 threshold for safety in case something
     bool-ish drives in.
     """
-    path = action.get("path") or ""
-    par = action.get("par") or ""
-    style = None
+    # payload-level path/par win over action-level so a smart widget
+    # (e.g. the param panel) can target any par on the fly without the
+    # YAML having to template per-row actions.
+    path = (payload.get("path") if payload else None) or action.get("path") or ""
+    par  = (payload.get("par")  if payload else None) or action.get("par")  or ""
+    style = (payload.get("style") if payload else None) or None
     if path == "$rollover" or par == "$rollover":
         ro = _rollover_par()
         if ro is None:
