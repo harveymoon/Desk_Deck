@@ -99,60 +99,48 @@ def scroll(*, delta: float | None = None, offset: float | None = None) -> tuple[
     return _request("POST", "/scroll", body)
 
 
-def thumbnail(window_id: int) -> tuple[int, bytes, str]:
-    return _request("GET", f"/windows/{window_id}/thumbnail")
+def thumbnail(window_id: int, width: int | None = None) -> tuple[int, bytes, str]:
+    """Fetch a window thumbnail. If `width` is given, asks winri to
+    downsample to that width via its `?w=NNN` query param (aspect ratio
+    preserved). Older winri binaries ignore the param and return the
+    native-resolution PNG — see INTEGRATION.md."""
+    path = f"/windows/{window_id}/thumbnail"
+    if width:
+        path += f"?w={int(width)}"
+    return _request("GET", path)
 
 
-# Server-side downscaled thumbnail cache so the tablet doesn't pull
-# multi-megabyte PNGs. Cached by (hwnd, max_dim) and refreshed every TTL_S.
-_THUMB_CACHE: dict[tuple[int, int], tuple[float, bytes]] = {}
+# Server-side thumbnail cache so concurrent tablet requests and the
+# periodic strip refresh don't repeatedly poke winri.
+_THUMB_CACHE: dict[tuple[int, int], tuple[float, bytes, str]] = {}
 _THUMB_TTL_S = 6.0
 _THUMB_CACHE_MAX = 200
 
 
-def thumbnail_resized(window_id: int, max_dim: int = 320, quality: int = 78) -> tuple[int, bytes, str]:
-    """Return a downsized JPEG (or original on failure to decode).
+def thumbnail_resized(window_id: int, max_dim: int = 320) -> tuple[int, bytes, str]:
+    """Cached fetch of a downsized thumbnail.
 
-    Cached per (hwnd, size) for THUMB_TTL_S so concurrent tablet requests
-    and the periodic strip refresh don't repeatedly poke winri."""
-    import io, time
-    try:
-        from PIL import Image
-    except Exception:
-        return thumbnail(window_id)
+    Delegates sizing to winri's native ?w= parameter (no PIL roundtrip on
+    our end). With an updated winri binary the response is already small
+    PNG; with an older one it falls back to the full-res capture.
+    """
+    import time
 
     now = time.time()
     key = (int(window_id), int(max_dim))
     cached = _THUMB_CACHE.get(key)
     if cached and now - cached[0] < _THUMB_TTL_S:
-        return 200, cached[1], "image/jpeg"
+        return 200, cached[1], cached[2]
 
-    status, body, ctype = thumbnail(window_id)
+    status, body, ctype = thumbnail(window_id, width=max_dim)
     if status != 200:
         return status, body, ctype
 
-    try:
-        img = Image.open(io.BytesIO(body))
-        img.thumbnail((max_dim, max_dim), Image.LANCZOS)
-        if img.mode == "RGBA":
-            bg = Image.new("RGB", img.size, (10, 10, 12))  # matches --bg
-            bg.paste(img, mask=img.split()[3])
-            img = bg
-        elif img.mode != "RGB":
-            img = img.convert("RGB")
-        buf = io.BytesIO()
-        img.save(buf, format="JPEG", quality=quality, optimize=True)
-        data = buf.getvalue()
-    except Exception as e:
-        print(f"[winri] thumbnail resize failed for hwnd={window_id}: {e}", flush=True)
-        return status, body, ctype
-
-    _THUMB_CACHE[key] = (now, data)
+    _THUMB_CACHE[key] = (now, body, ctype or "image/png")
     if len(_THUMB_CACHE) > _THUMB_CACHE_MAX:
-        # Drop the oldest entries
         for k, _ in sorted(_THUMB_CACHE.items(), key=lambda kv: kv[1][0])[: _THUMB_CACHE_MAX // 4]:
             _THUMB_CACHE.pop(k, None)
-    return 200, data, "image/jpeg"
+    return status, body, ctype or "image/png"
 
 
 def resize_to_fraction(fraction: float, window_id: int | None = None,
