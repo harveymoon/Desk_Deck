@@ -810,9 +810,120 @@ function parRowControl(par, opPath, emit) {
   track.addEventListener("pointerup", end);
   track.addEventListener("pointercancel", end);
 
+  // Inline value ladder for this row — same gesture as the standalone
+  // ladder widget, but emits a delta with the row's own path/par so the
+  // server's td_nudge_par can resolve it without $rollover.
+  const ladder = makeInlineLadder({
+    isInt,
+    onNudge: (delta) => {
+      emit({
+        t: "value",
+        id: "td_pars",
+        value: delta,
+        payload: { path: opPath, par: par.name, style, nudge: true },
+      });
+    },
+  });
+
   wrap.appendChild(track);
+  wrap.appendChild(ladder);
   wrap.appendChild(readout);
   return wrap;
+}
+
+// Compact value-ladder button used inside param-panel rows. Hold the
+// button, drag vertically to pick a magnitude from the stack (10 / 1 /
+// 0.1 / 0.01 / 0.001 by default — narrower set for Int pars), then drag
+// horizontally past LOCK_PX to lock and stream nudges every STEP_PX
+// of horizontal travel. Release to end.
+function makeInlineLadder({ isInt, onNudge }) {
+  const magnitudes = isInt ? [100, 10, 1] : [10, 1, 0.1, 0.01, 0.001];
+  const STEP_PX = 14;
+  const LOCK_PX = 18;
+  const ROW_PX  = 36;
+
+  const el = document.createElement("button");
+  el.type = "button";
+  el.className = "dd-pp-ladder";
+  el.textContent = "±";
+
+  const stack = document.createElement("div");
+  stack.className = "dd-pp-ladder-stack";
+  magnitudes.forEach((m, i) => {
+    const row = document.createElement("div");
+    row.className = "dd-pp-ladder-row";
+    row.textContent = String(m);
+    row.dataset.idx = i;
+    stack.appendChild(row);
+  });
+  el.appendChild(stack);
+
+  // Suppress every long-press default Android Chrome / iOS might fire.
+  el.addEventListener("contextmenu", (e) => e.preventDefault());
+  el.addEventListener("selectstart", (e) => e.preventDefault());
+
+  let dragging = false, phase = "off";
+  let chosenIdx = Math.floor(magnitudes.length / 2);
+  let startX = 0, startY = 0, cursorX = 0;
+
+  function highlight() {
+    stack.querySelectorAll(".dd-pp-ladder-row").forEach((r, i) => {
+      r.classList.toggle("is-on", i === chosenIdx);
+    });
+  }
+
+  el.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    dragging = true;
+    phase = "vertical";
+    chosenIdx = Math.floor(magnitudes.length / 2);
+    startX = e.clientX; startY = e.clientY; cursorX = e.clientX;
+    el.classList.add("is-active");
+    stack.classList.add("is-visible");
+    highlight();
+    try { el.setPointerCapture(e.pointerId); } catch {}
+    if (navigator.vibrate) navigator.vibrate(8);
+  });
+
+  el.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    if (phase === "vertical") {
+      // Pick magnitude based on Y delta from start; up = larger idx (smaller value).
+      const center = Math.floor(magnitudes.length / 2);
+      const offset = Math.round(dy / ROW_PX);
+      chosenIdx = Math.max(0, Math.min(magnitudes.length - 1, center + offset));
+      highlight();
+      if (Math.abs(dx) > LOCK_PX) {
+        phase = "horizontal";
+        stack.classList.remove("is-visible");
+        cursorX = e.clientX;
+      }
+    } else if (phase === "horizontal") {
+      const dxSince = e.clientX - cursorX;
+      const steps = Math.trunc(dxSince / STEP_PX);
+      if (steps !== 0) {
+        const mag = magnitudes[chosenIdx];
+        const delta = Number((steps * mag).toFixed(6));
+        onNudge(delta);
+        cursorX += steps * STEP_PX;
+      }
+    }
+  });
+
+  const finish = (e) => {
+    if (!dragging) return;
+    dragging = false;
+    phase = "off";
+    el.classList.remove("is-active");
+    stack.classList.remove("is-visible");
+    try { el.releasePointerCapture(e.pointerId); } catch {}
+  };
+  el.addEventListener("pointerup", finish);
+  el.addEventListener("pointercancel", finish);
+
+  return el;
 }
 
 const RENDERERS = {

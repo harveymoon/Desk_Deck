@@ -858,8 +858,8 @@ body.has-overlay .dd-sidebar { display: none; }
 }
 .dd-pp-slider {
   display: grid;
-  grid-template-columns: 1fr 80px;
-  gap: 10px;
+  grid-template-columns: 1fr 38px 80px;
+  gap: 8px;
   align-items: center;
 }
 .dd-pp-slider-track {
@@ -884,4 +884,59 @@ body.has-overlay .dd-sidebar { display: none; }
   font-size: 12px;
   text-align: right;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* Inline value-ladder button (one per Float/Int param row). */
+.dd-pp-ladder {
+  appearance: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 16px;
+  letter-spacing: 0.05em;
+  padding: 0;
+  height: 26px;
+  width: 38px;
+  cursor: grab;
+  position: relative;
+  overflow: visible;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: none;
+}
+.dd-pp-ladder.is-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+  cursor: grabbing;
+}
+.dd-pp-ladder-stack {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: none;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  z-index: 200;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  min-width: 64px;
+  pointer-events: none;
+}
+.dd-pp-ladder-stack.is-visible { display: flex; }
+.dd-pp-ladder-row {
+  padding: 8px 12px;
+  text-align: center;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+}
+.dd-pp-ladder-row:last-child { border-bottom: none; }
+.dd-pp-ladder-row.is-on {
+  background: var(--accent);
+  color: var(--bg);
 }

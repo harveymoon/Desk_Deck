@@ -139,6 +139,10 @@ def _td_set_par(action: dict[str, Any], payload: dict[str, Any], context: dict, 
     action = { type: "td_set_par", path: "/proj/noise1", par: "amp" }
     payload may carry { "value": ... } from a slider; otherwise action.value is used.
 
+    If payload.nudge is set (e.g. from an inline value-ladder in the
+    param panel), routes to _td_nudge_par instead so the value is
+    treated as a delta to add to the par's current value.
+
     Sentinel: path / par == "$rollover" → resolve at dispatch time from
     td.state("rollover") (kind_of=="par") so the widget always drives
     whatever's under the mouse RIGHT NOW. The slider runs in real par
@@ -147,6 +151,9 @@ def _td_set_par(action: dict[str, Any], payload: dict[str, Any], context: dict, 
     rounded, Toggle gets a 0.5 threshold for safety in case something
     bool-ish drives in.
     """
+    # Ladder nudges piggy-back the same widget value channel; redirect.
+    if payload and payload.get("nudge"):
+        return _td_nudge_par(action, payload, context, widget)
     # payload-level path/par win over action-level so a smart widget
     # (e.g. the param panel) can target any par on the fly without the
     # YAML having to template per-row actions.
@@ -186,12 +193,23 @@ def _td_macro(action: dict[str, Any], payload: dict[str, Any], context: dict, wi
 def _td_nudge_par(action: dict[str, Any], payload: dict[str, Any], context: dict, widget: dict) -> None:
     """Increment a parameter by a signed delta (value-ladder UX).
 
-    payload.value carries the delta. With path/par == "$rollover" (or
-    unset), targets the parameter currently under the mouse in TD.
-    Reads current value from td.state('rollover') (kind_of=='par'), adds
-    delta, sends set_par. Honours Int by rounding."""
-    path = action.get("path") or ""
-    par = action.get("par") or ""
+    payload.value carries the delta. path/par can come from action OR
+    payload (payload wins, same as td_set_par). Three resolution paths:
+
+      1. Explicit path+par from payload (param-panel ladder rows) —
+         current value looked up in td.state('selected').pages.
+      2. $rollover sentinel — current value from rollover state.
+      3. Implicit (no path/par) — same as $rollover.
+
+    Honours Int by rounding. Falls back gracefully if the par isn't
+    found in any state cache — the delta is sent as a new par.val
+    instead of as an absolute (last resort, may overshoot)."""
+    # payload-level path/par win over action-level so the per-row
+    # ladder buttons in the param panel can target any par on the fly.
+    path  = (payload.get("path")  if payload else None) or action.get("path") or ""
+    par   = (payload.get("par")   if payload else None) or action.get("par")  or ""
+    style = (payload.get("style") if payload else None) or None
+
     delta = None
     if payload and "value" in payload:
         delta = payload["value"]
@@ -205,7 +223,7 @@ def _td_nudge_par(action: dict[str, Any], payload: dict[str, Any], context: dict
         return
 
     cur_val = None
-    par_style = None
+    # Resolution 1: $rollover sentinel or unset → rollover state.
     if (not path) or (not par) or path == "$rollover" or par == "$rollover":
         ro = _rollover_par()
         if ro is None:
@@ -216,15 +234,30 @@ def _td_nudge_par(action: dict[str, Any], payload: dict[str, Any], context: dict
         if not par or par == "$rollover":
             par = p_meta["name"]
         cur_val = p_meta.get("value")
-        par_style = p_meta.get("style")
+        style = style or p_meta.get("style")
+    else:
+        # Resolution 2: explicit path/par → look up in the selected-op
+        # cache. The param panel is fed from this same state, so the
+        # value here matches what the user sees on the tablet.
+        sel = td.state("selected") or {}
+        for page in (sel.get("pages") or []):
+            for p in (page.get("pars") or []):
+                if p.get("name") == par:
+                    cur_val = p.get("value")
+                    style = style or p.get("style")
+                    break
+            if cur_val is not None:
+                break
 
     if cur_val is None:
-        return
+        # Fall back: ship the delta as the new value. Better than dropping.
+        print(f"[actions] td_nudge_par: no cached current value for {path}.{par} — sending raw delta", flush=True)
+        cur_val = 0
     try:
         new_val = float(cur_val) + delta
     except (TypeError, ValueError):
         return
-    if par_style == "Int":
+    if style == "Int":
         new_val = int(round(new_val))
     td.send_cmd("set_par", path=path, par=par, value=new_val)
 
