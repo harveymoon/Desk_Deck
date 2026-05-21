@@ -471,17 +471,22 @@ function buildTile({ title, meta, icon, cls = "" }) {
 
 // ───────── Winri overlay ─────────
 let _winriPollTimer = null;
+let _winriBuilt = false;     // controls vs strip are split so polls don't wipe scroll
+let _winriStripEl = null;
+let _winriStripHead = null;
 
 async function openWinri() {
   overlayBody.classList.add("is-winri");
   overlayBody.innerHTML = "<div class='dd-winri-empty'>loading winri…</div>";
-  await renderWinri();
+  _winriBuilt = false;
+  _winriStripEl = null;
+  _winriStripHead = null;
+  await refreshWinri();
   _winriPollTimer = setInterval(() => {
-    // Don't refresh if the overlay closed
     if (overlay.hidden || overlay.dataset.kind !== "winri") {
       stopWinriPoll(); return;
     }
-    renderWinri({ silent: true });
+    refreshWinri({ silent: true });
   }, 1500);
 }
 
@@ -489,11 +494,12 @@ function stopWinriPoll() {
   if (_winriPollTimer) { clearInterval(_winriPollTimer); _winriPollTimer = null; }
 }
 
-async function renderWinri({ silent = false } = {}) {
+async function refreshWinri({ silent = false } = {}) {
   let state;
   try {
     const r = await fetch("/api/winri/state?t=" + encodeURIComponent(token));
     if (r.status === 503) {
+      _winriBuilt = false;
       overlayBody.innerHTML =
         "<div class='dd-winri-empty'>" +
         "winri API not reachable on <code>127.0.0.1:47812</code>.<br>" +
@@ -505,77 +511,123 @@ async function renderWinri({ silent = false } = {}) {
     }
     state = await r.json();
   } catch (e) {
-    if (!silent) overlayBody.innerHTML = `<div class='dd-winri-empty'>winri fetch failed: ${e}</div>`;
+    if (!silent) {
+      overlayBody.innerHTML = `<div class='dd-winri-empty'>winri fetch failed: ${e}</div>`;
+      _winriBuilt = false;
+    }
     return;
   }
 
-  // Build the full panel (silent re-renders rebuild too — DOM is small)
+  if (!_winriBuilt) {
+    buildWinriControls();
+    _winriBuilt = true;
+  }
+  updateWinriStrip(state);
+}
+
+function buildWinriControls() {
   overlayBody.innerHTML = "";
 
-  // Section: Navigation
-  const navHead = section("Navigate focus");
-  overlayBody.appendChild(navHead);
+  // Navigate focus
+  overlayBody.appendChild(section("Navigate focus"));
   const navGrid = document.createElement("div");
   navGrid.className = "dd-winri-grid";
-  navGrid.appendChild(winriBtn({ glyph: "◀",  label: "Prev",   action: "focus-prev" }));
-  navGrid.appendChild(winriBtn({ glyph: "▶",  label: "Next",   action: "focus-next" }));
-  navGrid.appendChild(winriBtn({ glyph: "⇆◀", label: "Swap ←", action: "swap-prev" }));
-  navGrid.appendChild(winriBtn({ glyph: "▶⇆", label: "Swap →", action: "swap-next" }));
+  navGrid.appendChild(winriBtn({ glyph: "◀", label: "Prev", action: "focus-prev" }));
+  navGrid.appendChild(winriBtn({ glyph: "▶", label: "Next", action: "focus-next" }));
   overlayBody.appendChild(navGrid);
 
-  // Section: Scroll
+  // Scroll
   overlayBody.appendChild(section("Scroll the strip"));
   const scrollGrid = document.createElement("div");
   scrollGrid.className = "dd-winri-grid is-tight";
-  scrollGrid.appendChild(winriBtn({ glyph: "◀◀", label: "Far",  scroll: -600 }));
-  scrollGrid.appendChild(winriBtn({ glyph: "◀",  label: "Left", scroll: -200 }));
-  scrollGrid.appendChild(winriBtn({ glyph: "▶",  label: "Right", scroll: 200 }));
-  scrollGrid.appendChild(winriBtn({ glyph: "▶▶", label: "Far",  scroll: 600 }));
+  scrollGrid.appendChild(winriBtn({ glyph: "◀◀", label: "Far",   scroll: -600 }));
+  scrollGrid.appendChild(winriBtn({ glyph: "◀",  label: "Left",  scroll: -200 }));
+  scrollGrid.appendChild(winriBtn({ glyph: "▶",  label: "Right", scroll:  200 }));
+  scrollGrid.appendChild(winriBtn({ glyph: "▶▶", label: "Far",   scroll:  600 }));
   overlayBody.appendChild(scrollGrid);
 
-  // Section: Resize
+  // Resize
   overlayBody.appendChild(section("Resize focused window"));
   const sizeGrid = document.createElement("div");
   sizeGrid.className = "dd-winri-grid";
-  sizeGrid.appendChild(winriBtn({ glyph: "▮", label: "1/4",  quarter: true }));
-  sizeGrid.appendChild(winriBtn({ glyph: "▮▮", label: "1/2", action: "resize-halfscreen" }));
-  sizeGrid.appendChild(winriBtn({ glyph: "▮▮▮▮", label: "Full", action: "resize-fullscreen" }));
-  sizeGrid.appendChild(winriBtn({ glyph: "−", label: "Width −", action: "width-decrement" }));
-  sizeGrid.appendChild(winriBtn({ glyph: "+", label: "Width +", action: "width-increment" }));
+  sizeGrid.appendChild(winriBtn({ glyph: "▮",    label: "1/4",     quarter: true }));
+  sizeGrid.appendChild(winriBtn({ glyph: "▮▮",   label: "1/2",     action: "resize-halfscreen" }));
+  sizeGrid.appendChild(winriBtn({ glyph: "▮▮▮▮", label: "Full",    action: "resize-fullscreen" }));
+  sizeGrid.appendChild(winriBtn({ glyph: "−",    label: "Width −", action: "width-decrement" }));
+  sizeGrid.appendChild(winriBtn({ glyph: "+",    label: "Width +", action: "width-increment" }));
   overlayBody.appendChild(sizeGrid);
 
-  // Section: Modes
+  // Modes
   overlayBody.appendChild(section("Modes"));
   const modeGrid = document.createElement("div");
   modeGrid.className = "dd-winri-grid";
   modeGrid.appendChild(winriBtn({ glyph: "▦", label: "Overview",       action: "open-overview" }));
   modeGrid.appendChild(winriBtn({ glyph: "▢", label: "Close overview", action: "close-overview" }));
   modeGrid.appendChild(winriBtn({ glyph: "↻", label: "Refresh",        action: "refresh" }));
-  modeGrid.appendChild(winriBtn({ glyph: "✕", label: "Exit winri",     action: "exit", warn: true }));
   overlayBody.appendChild(modeGrid);
 
-  // Section: Live window strip
-  overlayBody.appendChild(section(`Tile strip · ${state.windows?.length || 0} windows`));
-  const strip = document.createElement("div");
-  strip.className = "dd-winri-strip";
-  for (const w of state.windows || []) {
-    const item = document.createElement("button");
-    item.className = "dd-winri-strip-item" + (w.focused ? " is-focused" : "");
-    const title = document.createElement("div");
-    title.className = "dd-winri-strip-title";
-    title.textContent = w.title || "(untitled)";
-    item.appendChild(title);
-    const proc = document.createElement("div");
-    proc.className = "dd-winri-strip-proc";
-    proc.textContent = `${w.process || "—"}  ·  w:${Math.round(w.width || 0)}px`;
-    item.appendChild(proc);
-    item.addEventListener("click", async () => {
-      await fetch(`/api/winri/focus/${w.id}?t=${encodeURIComponent(token)}`, { method: "POST" });
-      renderWinri({ silent: true });
-    });
-    strip.appendChild(item);
+  // Live strip — built once, mutated in place by updateWinriStrip()
+  _winriStripHead = section("Tile strip");
+  overlayBody.appendChild(_winriStripHead);
+  _winriStripEl = document.createElement("div");
+  _winriStripEl.className = "dd-winri-strip";
+  overlayBody.appendChild(_winriStripEl);
+}
+
+function updateWinriStrip(state) {
+  if (!_winriStripEl) return;
+  const wins = state.windows || [];
+  if (_winriStripHead) _winriStripHead.textContent = `Tile strip · ${wins.length} window${wins.length === 1 ? "" : "s"}`;
+
+  // Key existing children by data-wid so we can update without recreating.
+  const existing = new Map();
+  for (const child of Array.from(_winriStripEl.children)) {
+    existing.set(child.dataset.wid, child);
   }
-  overlayBody.appendChild(strip);
+
+  // Preserve scroll position across reorderings.
+  const savedScroll = _winriStripEl.scrollLeft;
+
+  const seen = new Set();
+  let prev = null;
+  for (const w of wins) {
+    const wid = String(w.id);
+    seen.add(wid);
+    let item = existing.get(wid);
+    if (!item) {
+      item = document.createElement("button");
+      item.className = "dd-winri-strip-item";
+      item.dataset.wid = wid;
+      const title = document.createElement("div");
+      title.className = "dd-winri-strip-title";
+      item.appendChild(title);
+      const proc = document.createElement("div");
+      proc.className = "dd-winri-strip-proc";
+      item.appendChild(proc);
+      item.addEventListener("click", async () => {
+        await fetch(`/api/winri/focus/${wid}?t=${encodeURIComponent(token)}`, { method: "POST" });
+        // Don't full-refresh here; the 1.5s poll will catch it without disturbing scroll.
+      });
+    }
+    // Update content in place
+    item.classList.toggle("is-focused", !!w.focused);
+    item.children[0].textContent = w.title || "(untitled)";
+    item.children[1].textContent = `${w.process || "—"}  ·  w:${Math.round(w.width || 0)}px`;
+    // Ensure correct order without removing
+    const expectedNext = prev ? prev.nextSibling : _winriStripEl.firstChild;
+    if (item !== expectedNext && item.nextSibling !== expectedNext) {
+      _winriStripEl.insertBefore(item, expectedNext);
+    }
+    prev = item;
+  }
+
+  // Drop closed windows
+  for (const [wid, child] of existing) {
+    if (!seen.has(wid)) _winriStripEl.removeChild(child);
+  }
+
+  // Restore scroll position so the user's drag isn't snapped back to 0.
+  _winriStripEl.scrollLeft = savedScroll;
 }
 
 function section(text) {
