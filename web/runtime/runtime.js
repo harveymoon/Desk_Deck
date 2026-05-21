@@ -563,7 +563,6 @@ function buildWinriControls() {
   modeGrid.className = "dd-winri-grid";
   modeGrid.appendChild(winriBtn({ glyph: "▦", label: "Overview",       action: "open-overview" }));
   modeGrid.appendChild(winriBtn({ glyph: "▢", label: "Close overview", action: "close-overview" }));
-  modeGrid.appendChild(winriBtn({ glyph: "↻", label: "Refresh",        action: "refresh" }));
   overlayBody.appendChild(modeGrid);
 
   // Live strip — built once, mutated in place by updateWinriStrip()
