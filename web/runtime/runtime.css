@@ -864,7 +864,7 @@ body.has-overlay .dd-sidebar { display: none; }
 }
 .dd-pp-slider {
   display: grid;
-  grid-template-columns: 1fr 38px 80px;
+  grid-template-columns: 38px 1fr 80px;
   gap: 8px;
   align-items: center;
 }

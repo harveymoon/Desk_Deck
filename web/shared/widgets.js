@@ -852,8 +852,8 @@ function parRowControl(par, opPath, emit) {
     },
   });
 
-  wrap.appendChild(track);
   wrap.appendChild(ladder);
+  wrap.appendChild(track);
   wrap.appendChild(readout);
   return wrap;
 }
