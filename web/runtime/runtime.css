@@ -968,31 +968,23 @@ body.has-overlay .dd-sidebar { display: none; }
   align-items: center;
 }
 .dd-pp-color-swatch {
+  /* The colour swatch IS the native <input type="color"> — styling
+     it to look like a flat square. Tap opens the OS picker
+     directly (no programmatic .click() forwarding which Android
+     Chrome blocks for security reasons). */
   appearance: none;
+  -webkit-appearance: none;
   width: 38px;
   height: 26px;
   background: #888;
   border: 1px solid var(--border);
   padding: 0;
   cursor: pointer;
-  position: relative;
-  overflow: hidden;
   -webkit-tap-highlight-color: transparent;
 }
-.dd-pp-color-input {
-  /* Visually hidden but still clickable programmatically — the
-     swatch button forwards its click here so the native colour
-     picker opens. */
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  opacity: 0;
-  border: none;
-  background: none;
-  padding: 0;
-  pointer-events: none;  /* swatch handles taps; this only opens via .click() */
-}
+.dd-pp-color-swatch::-webkit-color-swatch-wrapper { padding: 0; border: none; }
+.dd-pp-color-swatch::-webkit-color-swatch        { border: none; }
+.dd-pp-color-swatch::-moz-color-swatch            { border: none; }
 .dd-pp-color-expand {
   appearance: none;
   background: var(--surface);
@@ -1020,12 +1012,16 @@ body.has-overlay .dd-sidebar { display: none; }
   text-overflow: ellipsis;
 }
 .dd-pp-color-channels {
-  display: flex;
+  /* Hidden by default. Only shown when the row has .is-expanded, which
+     the expand arrow toggles. Without this, display:flex would override
+     the [hidden] attribute and the channels would always be visible. */
+  display: none;
   flex-direction: column;
   gap: 4px;
   padding: 6px 0 2px 0;
   border-top: 1px dashed var(--border);
 }
+.dd-pp-row-color.is-expanded .dd-pp-color-channels { display: flex; }
 .dd-pp-channel-row {
   display: grid;
   grid-template-columns: 24px 1fr;

@@ -917,18 +917,15 @@ function renderColorRow(group, opPath, highlight, emit) {
   const top = document.createElement("div");
   top.className = "dd-pp-color-main";
 
-  // Swatch — a button that opens a hidden native colour picker on tap.
-  const swatch = document.createElement("button");
-  swatch.type = "button";
+  // Swatch IS the native colour input — tap opens the OS picker
+  // directly. Android Chrome blocks programmatic .click() forwarding
+  // on type=color, so we let the input be the visible target.
+  const swatch = document.createElement("input");
+  swatch.type = "color";
   swatch.className = "dd-pp-color-swatch";
   swatch.title = "Tap to open colour picker";
-  // Hidden native input — clicking the swatch programmatically clicks
-  // the input which triggers the OS-level colour picker.
-  const picker = document.createElement("input");
-  picker.type = "color";
-  picker.className = "dd-pp-color-input";
-  picker.tabIndex = -1;
-  swatch.appendChild(picker);
+  // Alias so the rest of the function keeps working unchanged.
+  const picker = swatch;
 
   // Expand arrow — reveals the per-channel sliders.
   const expand = document.createElement("button");
@@ -1009,14 +1006,7 @@ function renderColorRow(group, opPath, highlight, emit) {
     setExpanded(!expanded);
   });
 
-  swatch.addEventListener("click", (e) => {
-    e.preventDefault();
-    // Open the OS-native picker. Some platforms need a real user
-    // gesture chain — calling .click() inside the swatch handler is
-    // the canonical way.
-    picker.click();
-  });
-
+  // No separate click handler — the input opens its own picker on tap.
   picker.addEventListener("input", () => sendHex(picker.value));
   picker.addEventListener("change", () => sendHex(picker.value));
 
