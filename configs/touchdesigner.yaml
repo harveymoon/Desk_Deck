@@ -91,7 +91,7 @@ widgets:
     w: 84
     h: 40
     props:
-      label: HELP
+      label: "?"
       action: { type: td_open_help }
 
   - id: td_help_py
@@ -101,7 +101,7 @@ widgets:
     w: 84
     h: 40
     props:
-      label: PY
+      label: "PY?"
       action: { type: td_open_help, python: true }
 
   # Live par editor for whatever op is selected in TD. Pages render as
