@@ -638,6 +638,38 @@ function renderParamPanel(w, emit) {
     }
   }
 
+  // In-place per-row value sync. Avoids tearing down DOM during a
+  // drag — when the user is dragging a slider, the server re-emits
+  // selection on every tick (because we set _selected_dirty after a
+  // set_par); rebuilding rows would detach the element the active
+  // pointermove handler is referencing, which manifests as the value
+  // jumping to 1 and the drag dying.
+  function syncRowsInPlace() {
+    const page = state.pages[state.activeIdx];
+    if (!page) return;
+    const rows = body.querySelectorAll(".dd-pp-row");
+    const pars = page.pars || [];
+    rows.forEach((row, i) => {
+      const par = pars[i];
+      if (!par || row.dataset.par !== (par.name || "")) return;
+      if (typeof row._syncFromPar === "function") row._syncFromPar(par);
+    });
+  }
+
+  function structureMatches(prev, next) {
+    if (!prev || !next) return false;
+    const a = prev[state.activeIdx];
+    const b = next[state.activeIdx];
+    if (!a || !b) return false;
+    const ap = a.pars || [], bp = b.pars || [];
+    if (ap.length !== bp.length) return false;
+    for (let i = 0; i < ap.length; i++) {
+      if (ap[i].name !== bp[i].name) return false;
+      if (ap[i].style !== bp[i].style) return false;
+    }
+    return true;
+  }
+
   function renderTabs() {
     tabs.innerHTML = "";
     state.pages.forEach((pg, i) => {
@@ -655,7 +687,9 @@ function renderParamPanel(w, emit) {
   }
 
   el._patch = (patch) => {
-    let needRows = false, needTabs = false;
+    let needTabs = false;
+    let pagesChanged = false;
+    let prevPages = null;
     if ("op" in patch) {
       state.op = patch.op;
       opLbl.textContent = patch.op
@@ -663,21 +697,39 @@ function renderParamPanel(w, emit) {
         : "(no op selected)";
     }
     if ("pages" in patch) {
+      prevPages = state.pages;
       state.pages = patch.pages || [];
-      // Keep the same active page across re-emits if it still exists.
+      // Keep the same active page across re-emits if it still exists
+      // (match by name, not just index, so reordering doesn't bump us).
+      const prevActiveName = (prevPages && prevPages[state.activeIdx]) ? prevPages[state.activeIdx].name : null;
+      if (prevActiveName) {
+        const newIdx = state.pages.findIndex(p => p.name === prevActiveName);
+        if (newIdx >= 0) state.activeIdx = newIdx;
+      }
       if (state.activeIdx >= state.pages.length) state.activeIdx = 0;
-      needTabs = true;
-      needRows = true;
+      // Tabs only need rebuild if the set of pages actually changed.
+      const tabsSig = (arr) => (arr || []).map(p => p.name).join("|");
+      if (tabsSig(prevPages) !== tabsSig(state.pages)) needTabs = true;
+      pagesChanged = true;
     }
     if ("highlight" in patch) {
       state.highlight = patch.highlight;
-      // Cheap path: toggle the class on existing rows instead of rebuilding.
       body.querySelectorAll(".dd-pp-row").forEach((row) => {
         row.classList.toggle("is-hot", row.dataset.par === state.highlight);
       });
     }
     if (needTabs) renderTabs();
-    if (needRows) renderRows();
+    if (pagesChanged) {
+      // Structure-aware update: if the active page's par list is
+      // identical to what's already on screen, just push new values
+      // into the existing controls (no DOM tear-down → active drags
+      // keep working). Otherwise fall back to a full rebuild.
+      if (structureMatches(prevPages, state.pages)) {
+        syncRowsInPlace();
+      } else {
+        renderRows();
+      }
+    }
   };
 
   // Initial empty render
@@ -699,8 +751,17 @@ function renderParRow(par, opPath, highlight, emit) {
 
   const ctl = document.createElement("div");
   ctl.className = "dd-pp-ctl";
-  ctl.appendChild(parRowControl(par, opPath, emit));
+  const control = parRowControl(par, opPath, emit);
+  ctl.appendChild(control);
   row.appendChild(ctl);
+
+  // Cheap in-place value sync — used by syncRowsInPlace so we don't
+  // tear down rows mid-drag. Controls expose ._syncValue(par); if a
+  // control doesn't, the sync is a no-op (Str input never auto-syncs
+  // because the user might be typing).
+  row._syncFromPar = (newPar) => {
+    if (typeof control._syncValue === "function") control._syncValue(newPar);
+  };
 
   return row;
 }
@@ -725,6 +786,13 @@ function parRowControl(par, opPath, emit) {
       btn.textContent = on ? "ON" : "OFF";
       send(on);
     });
+    btn._syncValue = (newPar) => {
+      const v = !!newPar.value;
+      if (v === on) return;
+      on = v;
+      btn.classList.toggle("is-on", on);
+      btn.textContent = on ? "ON" : "OFF";
+    };
     return btn;
   }
 
@@ -740,6 +808,11 @@ function parRowControl(par, opPath, emit) {
       sel.appendChild(o);
     }
     sel.addEventListener("change", () => send(sel.value));
+    sel._syncValue = (newPar) => {
+      if (newPar.value != null && sel.value !== String(newPar.value)) {
+        sel.value = String(newPar.value);
+      }
+    };
     return sel;
   }
 
@@ -855,6 +928,21 @@ function parRowControl(par, opPath, emit) {
   wrap.appendChild(ladder);
   wrap.appendChild(track);
   wrap.appendChild(readout);
+
+  // In-place value sync — used when the server re-emits selection
+  // state (e.g. after a tablet edit or an external TD change) so the
+  // slider's readout/fill updates without rebuilding the DOM. Skipped
+  // during a drag so it can't yank the thumb out from under the user.
+  wrap._syncValue = (newPar) => {
+    if (dragging) return;
+    const nv = (typeof newPar.value === "number") ? newPar.value :
+               (newPar.value != null ? Number(newPar.value) : val);
+    if (Number.isNaN(nv)) return;
+    if (Math.abs(nv - val) < 1e-9) return;
+    val = nv;
+    paint(val);
+  };
+
   return wrap;
 }
 
