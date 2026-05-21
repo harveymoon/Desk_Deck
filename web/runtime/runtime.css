@@ -528,6 +528,13 @@ html, body {
 }
 .dd-winri-btn.is-warn { color: var(--danger); }
 .dd-winri-btn.is-warn:active { background: var(--danger); border-color: var(--danger); color: var(--bg); }
+/* Stateful toggle (Overview): "on" stays lit accent until winri reports off */
+.dd-winri-btn.is-on {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+}
+.dd-winri-btn.is-on .dd-winri-glyph { color: var(--bg); }
 
 .dd-winri-section-head {
   font-family: var(--font-mono);

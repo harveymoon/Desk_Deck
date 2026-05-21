@@ -474,6 +474,7 @@ let _winriPollTimer = null;
 let _winriBuilt = false;     // controls vs strip are split so polls don't wipe scroll
 let _winriStripEl = null;
 let _winriStripHead = null;
+let _overviewToggleEl = null;
 
 async function openWinri() {
   overlayBody.classList.add("is-winri");
@@ -522,7 +523,26 @@ async function refreshWinri({ silent = false } = {}) {
     buildWinriControls();
     _winriBuilt = true;
   }
+  updateOverviewToggle(state);
   updateWinriStrip(state);
+}
+
+function setOverviewToggle(active) {
+  if (!_overviewToggleEl) return;
+  _overviewToggleEl._isOn = !!active;
+  _overviewToggleEl.classList.toggle("is-on", !!active);
+  const lbl   = _overviewToggleEl.querySelector(".dd-winri-toggle-lbl");
+  const glyph = _overviewToggleEl.querySelector(".dd-winri-glyph");
+  if (lbl)   lbl.textContent = active ? "Exit overview" : "Overview";
+  if (glyph) glyph.textContent = active ? "▢" : "▦";
+}
+
+function updateOverviewToggle(state) {
+  // Older winri binaries don't return `overview_active` / `mode` yet —
+  // fall back to the toggle's last-seen state so it doesn't flicker off.
+  if (state.overview_active === undefined && state.mode === undefined) return;
+  const active = !!(state.overview_active || state.mode === "overview");
+  setOverviewToggle(active);
 }
 
 function buildWinriControls() {
@@ -557,12 +577,33 @@ function buildWinriControls() {
   sizeGrid.appendChild(winriBtn({ glyph: "+",    label: "Width +", action: "width-increment" }));
   overlayBody.appendChild(sizeGrid);
 
-  // Modes
-  overlayBody.appendChild(section("Modes"));
+  // Mode (single toggle, syncs with winri's state.overview_active)
+  overlayBody.appendChild(section("Mode"));
   const modeGrid = document.createElement("div");
   modeGrid.className = "dd-winri-grid";
-  modeGrid.appendChild(winriBtn({ glyph: "▦", label: "Overview",       action: "open-overview" }));
-  modeGrid.appendChild(winriBtn({ glyph: "▢", label: "Close overview", action: "close-overview" }));
+  _overviewToggleEl = document.createElement("button");
+  _overviewToggleEl.className = "dd-winri-btn dd-winri-toggle";
+  _overviewToggleEl._isOn = false;
+  const glyph = document.createElement("span");
+  glyph.className = "dd-winri-glyph";
+  glyph.textContent = "▦";
+  _overviewToggleEl.appendChild(glyph);
+  const lbl = document.createElement("span");
+  lbl.className = "dd-winri-toggle-lbl";
+  lbl.textContent = "Overview";
+  _overviewToggleEl.appendChild(lbl);
+  _overviewToggleEl.addEventListener("click", async () => {
+    if (navigator.vibrate) navigator.vibrate(8);
+    // Optimistically flip so the user gets immediate feedback; the next
+    // poll will correct us if the action didn't take.
+    const wasOn = _overviewToggleEl._isOn;
+    setOverviewToggle(!wasOn);
+    const act = wasOn ? "close-overview" : "open-overview";
+    try {
+      await fetch(`/api/winri/action/${act}?t=${encodeURIComponent(token)}`, { method: "POST" });
+    } catch {}
+  });
+  modeGrid.appendChild(_overviewToggleEl);
   overlayBody.appendChild(modeGrid);
 
   // Live strip — built once, mutated in place by updateWinriStrip()
