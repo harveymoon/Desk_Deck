@@ -728,6 +728,11 @@ function updateWinriStrip(state) {
       item.className = "dd-winri-strip-item";
       item.dataset.wid = wid;
 
+      // If we've sized this window's card before in this session,
+      // apply that width NOW so the card never flashes from the
+      // default 240px placeholder when the overlay reopens.
+      applyCachedAspect(item, wid);
+
       // Thumbnail wrap with an <img> that lazy-loads the downscaled JPEG.
       const wrap = document.createElement("div");
       wrap.className = "dd-winri-strip-thumb-wrap";
@@ -810,8 +815,30 @@ function section(text) {
 // Clamps prevent extreme portraits/ultrawides from breaking the layout.
 const STRIP_ITEM_MIN_W = 140;
 const STRIP_ITEM_MAX_W = 480;
+// Cache aspect ratios per window id so reopening the Winri overlay
+// (or any re-render) lands the cards at the right width immediately
+// — no visible flash from the placeholder 240px to the final size.
+// Lives in module memory; lost on full page reload, which is fine.
+const _winriAspectCache = new Map();   // wid (string) → aspect (w/h)
+function applyCachedAspect(item, wid) {
+  const ar = _winriAspectCache.get(String(wid));
+  if (!ar) return;
+  // We don't yet know the laid-out thumb height (the item may not be
+  // in the DOM). Use the strip's content-area height as a stand-in;
+  // the strip is fixed-height by CSS so this is stable.
+  const stripH = _winriStripEl ? _winriStripEl.clientHeight : 240;
+  const bodyH = 50;  // approx label row height (body padding + 2 text lines)
+  const padding = 24; // strip vertical padding (top+bottom)
+  const thumbH = Math.max(40, stripH - bodyH - padding);
+  const w = Math.max(STRIP_ITEM_MIN_W, Math.min(STRIP_ITEM_MAX_W, Math.round(thumbH * ar)));
+  item.style.flex = `0 0 ${w}px`;
+}
 function sizeStripItemToAspect(item, img) {
   if (!img || !img.naturalWidth || !img.naturalHeight) return;
+  const ar = img.naturalWidth / img.naturalHeight;
+  // Cache by wid so reopen lands at the right size on the first paint.
+  const wid = item.dataset.wid;
+  if (wid) _winriAspectCache.set(String(wid), ar);
   // Defer one frame so the item is guaranteed laid out (image 'load'
   // can fire before the item is inserted into the strip when the image
   // is cached, leaving thumb.clientHeight at 0).
@@ -820,7 +847,6 @@ function sizeStripItemToAspect(item, img) {
     if (!thumb) return;
     const thumbH = thumb.clientHeight;
     if (thumbH <= 0) return;
-    const ar = img.naturalWidth / img.naturalHeight;
     const w = Math.max(STRIP_ITEM_MIN_W, Math.min(STRIP_ITEM_MAX_W, Math.round(thumbH * ar)));
     item.style.flex = `0 0 ${w}px`;
   });
