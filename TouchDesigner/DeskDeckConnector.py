@@ -75,6 +75,15 @@ class DeskDeckConnector:
         # Optional textport mirror — wraps sys.stdout/stderr so every print()
         # in TD also flows to the tablet's td_log textbox. Off by default;
         # toggled via the `Mirrorprint` custom parameter on the .tox parent.
+        #
+        # _td_native_stdout: captured at extension instantiation, BEFORE we
+        # touch sys.stdout. This is the most reliable reference to TD's
+        # actual textport sink — sys.__stdout__ is Python's preserved
+        # interpreter-startup stdout, which in TD often isn't the textport
+        # routing object. We restore to _td_native_stdout when the
+        # Streamtextport toggle goes off.
+        self._td_native_stdout = sys.stdout
+        self._td_native_stderr = sys.stderr
         self._orig_stdout = None
         self._orig_stderr = None
         self._sync_print_mirror()
@@ -722,6 +731,28 @@ class DeskDeckConnector:
         """
         self._sync_print_mirror(force=True)
 
+    def RepairStdout(self):
+        """Force sys.stdout / sys.stderr back to TD's textport sink,
+        regardless of the Streamtextport toggle or current state.
+
+        Call from the textport if prints have stopped showing up there
+        (e.g. you toggled Streamtextport off but it didn't catch):
+          op('Desk_Deck').RepairStdout()
+
+        Tries the native sink we captured at extension init first, then
+        sys.__stdout__, then a placeholder so at least *something*
+        coherent is wired up.
+        """
+        target_out = self._td_native_stdout or sys.__stdout__
+        target_err = self._td_native_stderr or sys.__stderr__
+        if target_out is not None: sys.stdout = target_out
+        if target_err is not None: sys.stderr = target_err
+        # Clear any cached install state so the next install starts clean.
+        self._orig_stdout = None
+        self._orig_stderr = None
+        # Print AFTER restoring so the message lands in the textport.
+        print(f"[DeskDeck] stdout repaired -> {type(sys.stdout).__name__}")
+
     def _sync_print_mirror(self, force=False):
         """Install / restore the sys.stdout & sys.stderr mirror based on
         the Streamtextport toggle. TD doesn't dispatch print() through a
@@ -765,18 +796,29 @@ class DeskDeckConnector:
             # someone else has already swapped sys.stdout to something
             # appropriate and we shouldn't stomp it.
             #
-            # Prefer sys.__stdout__ (Python's original sink, which is the
-            # textport for TD) over our captured ref, since the captured
-            # one can be a transient textport-routing object that's no
-            # longer the canonical sink.
+            # Restoration priority (most-trusted first):
+            #   1. _td_native_stdout — captured at extension __init__,
+            #      which is the textport sink TD set up for THIS class.
+            #   2. _orig_stdout — captured when we installed the mirror;
+            #      can be a transient sink if TD rotated it, but better
+            #      than nothing.
+            #   3. sys.__stdout__ — Python's preserved interpreter-init
+            #      stdout. Last resort; in TD this is often NOT the
+            #      textport.
             if sys.stdout is log_dat:
-                sys.stdout = sys.__stdout__ or self._orig_stdout or sys.stdout
+                sys.stdout = (self._td_native_stdout
+                              or self._orig_stdout
+                              or sys.__stdout__
+                              or sys.stdout)
             if sys.stderr is log_dat:
-                sys.stderr = sys.__stderr__ or self._orig_stderr or sys.stderr
+                sys.stderr = (self._td_native_stderr
+                              or self._orig_stderr
+                              or sys.__stderr__
+                              or sys.stderr)
             self._orig_stdout = None
             self._orig_stderr = None
             if force:
-                self._dbg("Streamtextport OFF — sys.stdout restored to sys.__stdout__")
+                self._dbg(f"Streamtextport OFF — sys.stdout restored ({type(sys.stdout).__name__})")
 
     def RegisterMacro(self, name, fn):
         """Register a callable invokable from the tablet via
