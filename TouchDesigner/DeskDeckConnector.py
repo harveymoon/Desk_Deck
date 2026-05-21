@@ -58,23 +58,81 @@ class DeskDeckConnector:
     # ─────────── connection lifecycle ───────────
 
     def Connect(self):
-        """Open the WebSocket. Reads `Server` and `Token` from .tox params if
-        present; otherwise uses the defaults stored on this instance."""
+        """Open the WebSocket. Reads `Server` and `Token` from .tox params.
+
+        Accepts `Server` in any of these forms:
+          ws://192.168.1.161:8765        (scheme + host + port)
+          192.168.1.161:8765             (no scheme — assumes ws://)
+          192.168.1.161                  (just host — uses default port 8765)
+
+        Web Socket DAT parameter shape varies between TD builds. We probe
+        for a single `url` param first (modern); otherwise fall back to
+        `netaddress` + `port` (older) and try a `path`-style param for the
+        URL path. The chosen route is printed via debug() so you can sanity-
+        check in the textport.
+        """
         srv = self._pp("Server", self.Server)
         tok = self._pp("Token", self.Token)
         if not srv:
             self._dbg("Connect: no Server configured")
             return
-        url = f"{srv.rstrip('/')}/live?device=touchdesigner"
+        if not tok:
+            self._dbg("Connect: WARNING — no Token. Server will reject the WS "
+                      "with 'Forbidden'. Paste %APPDATA%\\Desk_Deck\\token into "
+                      "the Token parameter on Desk_Deck.tox.")
+
+        # Normalize the Server string into host / port / scheme.
+        from urllib.parse import urlsplit
+        raw = srv.strip()
+        if "://" not in raw:
+            raw = "ws://" + raw
+        parts = urlsplit(raw)
+        host = parts.hostname or "127.0.0.1"
+        port = parts.port or (8765 if parts.scheme in ("ws", "http") else 443)
+        secure = parts.scheme in ("wss", "https")
+
+        path = f"/live?device=touchdesigner"
         if tok:
-            url += f"&t={tok}"
+            path += f"&t={tok}"
+
+        # Web Socket DAT's address parameter wants the full URL — scheme,
+        # host, path, query — but WITHOUT the port (the port lives in the
+        # separate `port` param). Verified against TD 2023+ Web Socket DAT.
+        scheme = "wss" if secure else "ws"
+        address_url = f"{scheme}://{host}{path}"
+
         ws = op("ws")
         if ws is None:
-            self._dbg("Connect: missing ws DAT — add a webSocketDAT named 'ws'")
+            self._dbg("Connect: missing ws DAT — add a Web Socket DAT named 'ws'")
             return
-        ws.par.netaddress = url
+
+        def setp(name, value):
+            par = ws.par[name] if hasattr(ws.par, name) else None
+            if par is None:
+                return False
+            try:
+                par.val = value
+                return True
+            except Exception:
+                return False
+
+        addr_set = setp("netaddress", address_url) or setp("Netaddress", address_url) \
+                   or setp("address", address_url) or setp("Address", address_url)
+        port_set = setp("port", port) or setp("Port", port)
+        for s in ("Secure", "secure", "Usehttps"):
+            if setp(s, secure):
+                break
+
+        if not addr_set:
+            self._dbg("Connect: ERROR — couldn't find an address parameter on the Web Socket DAT")
+            return
+        if not port_set:
+            self._dbg(f"Connect: WARNING — no `port` parameter on Web Socket DAT; "
+                      f"connection may try port 80 instead of {port}")
+
+        ws.par.active = False  # cycle to force reconnect with new settings
         ws.par.active = True
-        self._dbg(f"Connect: → {url}")
+        self._dbg(f"Connect: address={address_url}  port={port}")
 
     def Disconnect(self):
         ws = op("ws")

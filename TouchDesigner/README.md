@@ -65,6 +65,23 @@ op('Desk_Deck').Disconnect()
 
 Watch the server's stdout for `[td] hello · MyShow.toe · version 2023.11600`.
 
+### How the Web Socket DAT params get wired
+
+TD's Web Socket DAT splits the connection across two parameters:
+
+- **Network Address (`netaddress`)** wants the *full URL* — scheme, host,
+  path, query — but **without the port** (e.g.
+  `ws://192.168.1.161/live?device=touchdesigner&t=<token>`).
+- **Network Port (`port`)** is the port number separately (e.g. `8765`).
+
+The `Connect()` method handles this — you only set the `Server` param on
+the .tox parent (e.g. `ws://192.168.1.161:8765`) and the connector
+splits it into the right two pars on the underlying Web Socket DAT.
+
+If `Connect()` prints `WARNING — no port parameter` in the textport,
+your TD build's Web Socket DAT param names differ — share a screenshot
+and we'll adjust the connector.
+
 ## Streamed state
 
 The server tells the connector which kinds to stream (so we only emit
