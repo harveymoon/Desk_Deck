@@ -640,8 +640,32 @@ class DeskDeckConnector:
             return {"name": getattr(pg, "name", "?"), "error": str(e)}
 
     def _safe_eval(self, par):
-        try:    return par.eval()
+        try:    return self._jsonable(par.eval())
         except Exception: return None
+
+    def _jsonable(self, v):
+        """Coerce a TD value into something json.dumps can handle.
+
+        Par.eval() can return TD operator objects for CHOP/TOP/COMP-reference
+        pars (style 'CHOP', 'TOP', 'OP', 'COMP', ...) — those aren't JSON
+        serializable. We convert ops to their path string. Other unknown
+        types fall back to str(). Lists/tuples are walked recursively so a
+        pargroup value list with a stray op reference still survives."""
+        if v is None or isinstance(v, (bool, int, float, str)):
+            return v
+        # TD operator → its path. Detect by duck-typing on .path; cheap
+        # and works for OP, COMP, baseCOMP, panelCOMP, CHOP, TOP, etc.
+        path = getattr(v, "path", None)
+        if isinstance(path, str):
+            return path
+        if isinstance(v, (list, tuple)):
+            return [self._jsonable(x) for x in v]
+        if isinstance(v, dict):
+            return {str(k): self._jsonable(val) for k, val in v.items()}
+        try:
+            return str(v)
+        except Exception:
+            return None
 
     def _diff_pane_path(self):
         try:
@@ -870,9 +894,11 @@ class DeskDeckConnector:
             style = par.style
             # Read both raw val (typed value or expression result) and eval()
             # (always evaluated number). For expression-mode pars they differ.
-            try:    value = par.eval()
+            # _jsonable() coerces OP / COMP / CHOP / TOP references to their
+            # path string so the snapshot stays JSON-serialisable.
+            try:    value = self._jsonable(par.eval())
             except Exception: value = None
-            try:    raw_val = par.val
+            try:    raw_val = self._jsonable(par.val)
             except Exception: raw_val = None
             # TD's clampMin/clampMax pars are toggles + values; the actual
             # numeric clamp lives on `clampMinValue` / `clampMaxValue`. Read
