@@ -84,3 +84,15 @@ widgets:
     action:
       type: hotkey
       keys: ''
+- id: bm_touchdesigner
+  type: button
+  x: 928
+  y: 64
+  w: 240
+  h: 120
+  props:
+    label: TOUCHDESIGNER
+    action:
+      type: command
+      cmd:
+      - C:\Program Files\Derivative\TouchDesigner\bin\TouchDesigner.exe
