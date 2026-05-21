@@ -91,11 +91,15 @@ widgets:
       max_lines: 2
       source: td_rollover
 
+  # Slider and toggle share the same slot. Only one is ever visible at a
+  # time (server pushes hidden:true to whichever doesn't match the par
+  # style under the mouse) so they don't overlap visually — the visible
+  # one fills the whole rollover-control area.
   - id: td_rollover_drive
     type: slider
     x: 820
     y: 224
-    w: 460
+    w: 736
     h: 60
     props:
       label: VAL
@@ -107,30 +111,19 @@ widgets:
 
   - id: td_rollover_toggle
     type: button
-    x: 1296
+    x: 820
     y: 224
-    w: 260
+    w: 736
     h: 60
     props:
-      label: "(not a toggle)"
+      label: "(no toggle)"
       action: { type: td_toggle_par }
-
-  - id: td_perf
-    type: textbox
-    x: 40
-    y: 300
-    w: 760
-    h: 40
-    props:
-      monospace: true
-      max_lines: 1
-      source: td_perf
 
   - id: td_status
     type: textbox
-    x: 820
+    x: 40
     y: 300
-    w: 736
+    w: 1516
     h: 40
     props:
       monospace: true
