@@ -179,6 +179,26 @@ def _td_macro(action: dict[str, Any], payload: dict[str, Any], context: dict, wi
     td.send_cmd("macro", name=name, args=action.get("args") or {})
 
 
+def _td_toggle_par(action: dict[str, Any], payload: dict[str, Any], context: dict, widget: dict) -> None:
+    """Flip a Toggle-style parameter. With no `path`/`par`, targets the
+    parameter currently under the mouse in TD (rollover_par)."""
+    path = action.get("path") or ""
+    par = action.get("par") or ""
+    cur_val = None
+    if not path or not par or path == "$rollover" or par == "$rollover":
+        rp = td.state("rollover_par") or {}
+        op_ = (rp.get("op") or {})
+        p = (rp.get("par") or {})
+        if not op_.get("path") or not p.get("name"):
+            print("[actions] td_toggle_par: nothing under mouse to toggle", flush=True)
+            return
+        path = op_["path"] if not path or path == "$rollover" else path
+        par = p["name"] if not par or par == "$rollover" else par
+        cur_val = p.get("value")
+    new_val = not bool(cur_val)
+    td.send_cmd("set_par", path=path, par=par, value=new_val)
+
+
 def _td_open_help(action: dict[str, Any], payload: dict[str, Any], context: dict, widget: dict) -> None:
     """Open the docs.derivative.ca page for the currently-selected op."""
     import webbrowser
@@ -212,5 +232,6 @@ _HANDLERS = {
     "chrome_tab": _chrome_tab,
     "td_set_par": _td_set_par,
     "td_macro": _td_macro,
+    "td_toggle_par": _td_toggle_par,
     "td_open_help": _td_open_help,
 }

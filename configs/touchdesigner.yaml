@@ -125,7 +125,7 @@ widgets:
     type: slider
     x: 820
     y: 448
-    w: 736
+    w: 460
     h: 56
     props:
       label: VAL
@@ -135,16 +135,37 @@ widgets:
       orientation: horizontal
       action: { type: td_set_par, path: "$rollover", par: "$rollover" }
 
+  - id: td_rollover_toggle
+    type: button
+    x: 1296
+    y: 448
+    w: 260
+    h: 56
+    props:
+      label: "(not a toggle)"
+      action: { type: td_toggle_par }
+
   - id: td_perf
     type: textbox
     x: 40
     y: 520
-    w: 1516
+    w: 760
     h: 40
     props:
       monospace: true
       max_lines: 1
       source: td_perf
+
+  - id: td_status
+    type: textbox
+    x: 820
+    y: 520
+    w: 736
+    h: 40
+    props:
+      monospace: true
+      max_lines: 1
+      source: td_status
 
   - id: td_log
     type: textbox

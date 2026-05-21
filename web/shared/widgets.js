@@ -44,8 +44,19 @@ export function updateWidget(el, widget, patch) {
     }
   } else if (widget.type === "slider") {
     if ("value" in patch) setSliderValue(el, widget, patch.value);
+    if ("disabled" in patch) el.classList.toggle("is-disabled", !!patch.disabled);
   } else if (widget.type === "rotary") {
     if ("value" in patch) setRotaryValue(el, widget, patch.value);
+  } else if (widget.type === "button") {
+    if ("active" in patch) el.classList.toggle("is-on", !!patch.active);
+    if ("disabled" in patch) {
+      el.disabled = !!patch.disabled;
+      el.classList.toggle("is-disabled", !!patch.disabled);
+    }
+    if ("label" in patch) {
+      const lbl = el.querySelector(".dd-button-label");
+      if (lbl) lbl.textContent = patch.label;
+    }
   }
 }
 

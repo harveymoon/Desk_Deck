@@ -193,19 +193,37 @@ def _on_td_rollover_par(payload: dict | None) -> None:
     if _loop is None:
         return
     p = ((payload or {}).get("par") or {})
+    style = p.get("style")
     val = p.get("value")
-    if val is None:
-        return
-    try:
-        v = float(val) if not isinstance(val, bool) else (1.0 if val else 0.0)
-    except (TypeError, ValueError):
-        return
-    nmin = float(p.get("normMin") or 0.0)
-    nmax = float(p.get("normMax") or 1.0)
-    span = nmax - nmin
-    norm = 0.0 if span == 0 else max(0.0, min(1.0, (v - nmin) / span))
+
+    # Slider gets normalized value (0..1) AND a disabled flag when the par
+    # under the mouse is a Toggle (sliders don't make sense for booleans).
+    is_toggle = (style == "Toggle")
+    if val is not None:
+        try:
+            v = float(val) if not isinstance(val, bool) else (1.0 if val else 0.0)
+        except (TypeError, ValueError):
+            v = None
+        if v is not None:
+            nmin = float(p.get("normMin") or 0.0)
+            nmax = float(p.get("normMax") or 1.0)
+            span = nmax - nmin
+            norm = 0.0 if span == 0 else max(0.0, min(1.0, (v - nmin) / span))
+            asyncio.run_coroutine_threadsafe(
+                hub.push_widget_update("td_rollover_drive",
+                                       {"value": norm, "disabled": is_toggle}),
+                _loop,
+            )
+
+    # Dedicated toggle button. Reflects on/off state and label; only
+    # enabled when the par under the mouse is actually a Toggle.
+    is_on = False
+    if is_toggle:
+        is_on = bool(val) if val is not None else False
+    label = f"{p.get('name','?').upper()}: {'ON' if is_on else 'OFF'}" if is_toggle else "(not a toggle)"
     asyncio.run_coroutine_threadsafe(
-        hub.push_widget_update("td_rollover_drive", {"value": norm}),
+        hub.push_widget_update("td_rollover_toggle",
+                               {"active": is_on, "disabled": not is_toggle, "label": label}),
         _loop,
     )
 

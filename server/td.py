@@ -31,6 +31,7 @@ _state: dict[str, Any] = {
     "rollover_par": None,
     "perf":         None,
     "pane_path":    None,
+    "status":       None,  # ui.status string
     "hello":        None,  # most recent hello from TD
 }
 
@@ -202,7 +203,7 @@ def subscribe(kind: str, fn: Callable[[Any], None]) -> Callable[[], None]:
 
 # Kinds TD can be told to start/stop streaming. (`hello` and `log` are
 # always pushed when relevant.)
-_STREAMABLE = {"selected", "rollover_op", "rollover_par", "perf", "pane_path"}
+_STREAMABLE = {"selected", "rollover_op", "rollover_par", "perf", "pane_path", "status"}
 
 
 def state(kind: str) -> Any:

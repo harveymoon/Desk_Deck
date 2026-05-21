@@ -46,6 +46,7 @@ class DeskDeckConnector:
         self._last_rollover_par = None  # (op_path, par_name, value) tuple
         self._last_pane_path = None
         self._last_perf = None          # (fps, cook_ms, gpu)
+        self._last_status = None        # ui.status string
 
         # Which state kinds the server has subscribed to. Only emit these.
         self._subs = set()
@@ -296,6 +297,8 @@ class DeskDeckConnector:
             self._diff_pane_path()
         if "perf" in self._subs:
             self._diff_perf()
+        if "status" in self._subs:
+            self._diff_status()
 
         # Always flush log buffer (server filters by subscriber list).
         self._flush_log()
@@ -321,15 +324,28 @@ class DeskDeckConnector:
     def _selected_ops(self):
         """Return the user's current op selection.
 
-        TD distinguishes:
-          - pane.selected — list of ops with selection rectangle (set by
-            box-select or shift-click; a plain single click does NOT
-            populate this in many builds).
-          - pane.current  — the single op with focus (set by any click).
+        Primary path: ui.activePane.owner.selectedChildren — the proper
+        TD API for 'what ops are highlighted in the network the user is
+        currently editing'. Works for plain clicks, shift-clicks, and
+        box-select.
 
-        We try selected first; if empty, fall back to current as a single-
-        element list so the tablet still updates on a plain click.
+        Fallbacks for builds / pane types where selectedChildren isn't
+        available: pane.selected, then pane.current, then any network
+        editor pane.
         """
+        # 1. Best: active pane's owner.selectedChildren
+        try:
+            ap = getattr(ui, "activePane", None)
+            if ap is not None:
+                owner = getattr(ap, "owner", None)
+                if owner is not None:
+                    sc = getattr(owner, "selectedChildren", None)
+                    if sc:
+                        return list(sc)
+        except Exception:
+            pass
+
+        # Gather network panes for fallbacks
         candidates = []
         try:
             ap = getattr(ui, "activePane", None)
@@ -351,7 +367,17 @@ class DeskDeckConnector:
             if getattr(pane, "type", None) == "NetworkEditor":
                 network_panes.append(pane)
 
-        # 1. Pane with a non-empty selection wins.
+        # 2. Any network pane owner with selectedChildren
+        for pane in network_panes:
+            try:
+                owner = pane.owner
+                sc = getattr(owner, "selectedChildren", None) if owner is not None else None
+                if sc:
+                    return list(sc)
+            except Exception:
+                continue
+
+        # 3. pane.selected (set by box-select / shift-click)
         for pane in network_panes:
             try:
                 sel = pane.selected or []
@@ -360,7 +386,7 @@ class DeskDeckConnector:
             if sel:
                 return sel
 
-        # 2. Else use the current op of the first network pane.
+        # 4. pane.current (the single focused op)
         for pane in network_panes:
             try:
                 cur = pane.current
@@ -369,14 +395,7 @@ class DeskDeckConnector:
             if cur is not None:
                 return [cur]
 
-        # 3. Last resort: whatever the active pane's selected returns (may
-        #    be empty — covers the deselect-everything case so the tablet
-        #    clears its label).
-        if candidates:
-            try:
-                return candidates[0].selected or []
-            except Exception:
-                pass
+        # 5. Last resort: empty selection (clears tablet label on deselect)
         return []
 
     def _diff_rollover(self):
@@ -438,6 +457,17 @@ class DeskDeckConnector:
             return
         self._last_pane_path = path
         self._send({"t": "state", "kind": "pane_path", "path": path})
+
+    def _diff_status(self):
+        try:
+            s = ui.status or ""
+        except Exception:
+            s = ""
+        if s == self._last_status:
+            return
+        self._last_status = s
+        self._stats["emit"] += 1
+        self._send({"t": "state", "kind": "status", "text": s})
 
     def _diff_perf(self):
         try:

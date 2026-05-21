@@ -163,6 +163,19 @@ html, body {
   color: var(--bg);
   border-color: var(--accent);
 }
+/* Stateful "on" — used by widget_update.active patches (e.g. TD Toggle par) */
+.dd-button.is-on {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+}
+/* Disabled state — server pushes when the bound concept doesn't apply
+   (e.g. quick-adjust slider when current rollover par is a Toggle). */
+.dd-button.is-disabled,
+.dd-slider.is-disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
 .dd-button-icon { font-size: 1.2em; line-height: 1; }
 .dd-button-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 
