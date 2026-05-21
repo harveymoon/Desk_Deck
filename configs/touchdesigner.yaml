@@ -6,21 +6,11 @@ canvas:
   height: 1000
   theme: midnight
 widgets:
-  - id: title
-    type: label
-    x: 40
-    y: 24
-    w: 600
-    h: 20
-    props:
-      text: TOUCHDESIGNER
-      align: left
-      size: 12
-
+  # ─── Top hotkey row — all 140×100 ───
   - id: save
     type: button
     x: 40
-    y: 64
+    y: 24
     w: 140
     h: 100
     props:
@@ -29,42 +19,42 @@ widgets:
 
   - id: perform
     type: button
-    x: 40
-    y: 220
-    w: 240
-    h: 140
+    x: 200
+    y: 24
+    w: 140
+    h: 100
     props:
       label: PERFORM
       action: { type: td_macro, name: perform_mode }
 
   - id: palette
     type: button
-    x: 296
-    y: 220
-    w: 240
-    h: 140
+    x: 360
+    y: 24
+    w: 140
+    h: 100
     props:
       label: PALETTE
       action: { type: hotkey, keys: ctrl+shift+s }
 
   - id: textport
     type: button
-    x: 552
-    y: 220
-    w: 240
-    h: 140
+    x: 520
+    y: 24
+    w: 140
+    h: 100
     props:
       label: TEXTPORT
       action: { type: hotkey, keys: alt+t }
 
-  # ───────── live TD bridge (Desk_Deck.tox must be loaded + connected) ─────────
+  # ─── Live TD bridge (Desk_Deck.tox must be loaded + connected) ───
 
   - id: td_sel
     type: textbox
     x: 40
-    y: 388
+    y: 160
     w: 1080
-    h: 44
+    h: 48
     props:
       monospace: true
       max_lines: 2
@@ -73,9 +63,9 @@ widgets:
   - id: td_help
     type: button
     x: 1140
-    y: 388
+    y: 160
     w: 200
-    h: 44
+    h: 48
     props:
       label: HELP
       action: { type: td_open_help }
@@ -83,9 +73,9 @@ widgets:
   - id: td_help_py
     type: button
     x: 1356
-    y: 388
+    y: 160
     w: 200
-    h: 44
+    h: 48
     props:
       label: PY HELP
       action: { type: td_open_help, python: true }
@@ -93,9 +83,9 @@ widgets:
   - id: td_rollover
     type: textbox
     x: 40
-    y: 448
+    y: 224
     w: 760
-    h: 56
+    h: 60
     props:
       monospace: true
       max_lines: 2
@@ -104,9 +94,9 @@ widgets:
   - id: td_rollover_drive
     type: slider
     x: 820
-    y: 448
+    y: 224
     w: 460
-    h: 56
+    h: 60
     props:
       label: VAL
       min: 0
@@ -118,9 +108,9 @@ widgets:
   - id: td_rollover_toggle
     type: button
     x: 1296
-    y: 448
+    y: 224
     w: 260
-    h: 56
+    h: 60
     props:
       label: "(not a toggle)"
       action: { type: td_toggle_par }
@@ -128,7 +118,7 @@ widgets:
   - id: td_perf
     type: textbox
     x: 40
-    y: 520
+    y: 300
     w: 760
     h: 40
     props:
@@ -139,7 +129,7 @@ widgets:
   - id: td_status
     type: textbox
     x: 820
-    y: 520
+    y: 300
     w: 736
     h: 40
     props:
@@ -150,10 +140,10 @@ widgets:
   - id: td_log
     type: textbox
     x: 40
-    y: 576
+    y: 356
     w: 1516
-    h: 384
+    h: 624
     props:
       monospace: true
-      max_lines: 200
+      max_lines: 400
       source: td_textport
