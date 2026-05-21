@@ -612,10 +612,12 @@ function updateWinriStrip(state) {
     item.classList.toggle("is-focused", !!w.focused);
     item.children[0].textContent = w.title || "(untitled)";
     item.children[1].textContent = `${w.process || "—"}  ·  w:${Math.round(w.width || 0)}px`;
-    // Ensure correct order without removing
-    const expectedNext = prev ? prev.nextSibling : _winriStripEl.firstChild;
-    if (item !== expectedNext && item.nextSibling !== expectedNext) {
-      _winriStripEl.insertBefore(item, expectedNext);
+    // Ensure the item sits at its expected position (after `prev`, or as
+    // firstChild if prev is null). Bug fix: a new item starts detached from
+    // the DOM, so insertBefore(item, expectedPos) both moves AND attaches.
+    const expectedPos = prev ? prev.nextSibling : _winriStripEl.firstChild;
+    if (item !== expectedPos) {
+      _winriStripEl.insertBefore(item, expectedPos);
     }
     prev = item;
   }

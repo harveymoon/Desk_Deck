@@ -109,19 +109,18 @@ def resize_to_fraction(fraction: float, window_id: int | None = None,
     chaining width-(in|de)crement calls.
 
     Each native Winri width-step is a discrete jump (50 px in the user's
-    config, 20 px default), so the visual "slide" effect comes from issuing
-    many of them back-to-back. We:
+    config, 20 px default); the visual "slide" effect is many of them
+    issued back-to-back. We:
 
-      1. Read the live width and screen.
+      1. Read live width and screen dims.
       2. Decide direction (grow → width-increment / shrink → width-decrement).
-      3. Probe the actual step size with a single call (so we work
-         regardless of the user's [tiling] resize_increment).
-      4. Chain the rest of the calls to land within one step of target.
+      3. Probe step size with one call (works regardless of user's
+         [tiling] resize_increment setting).
+      4. Chain the rest of the calls on a single persistent HTTP/1.1
+         connection (~halves end-to-end time vs. urllib.urlopen which
+         re-handshakes per call).
 
-    Bounded by max_steps so a misconfig can't lock the loop. Going larger
-    than ~80 steps gets noticeably slow because each HTTP roundtrip is
-    ~5–30 ms — for very big jumps callers should anchor via a native
-    action first (resize-halfscreen) and then call this.
+    Bounded by max_steps so a misconfig can't lock the loop.
     """
     s = state()
     if not s:
@@ -152,9 +151,9 @@ def resize_to_fraction(fraction: float, window_id: int | None = None,
 
     act = "width-increment" if diff > 0 else "width-decrement"
 
-    # Probe step size with a single call.
+    # Probe step size with a single call (still through urllib for simplicity).
     action(act)
-    time.sleep(0.05)
+    time.sleep(0.04)
     s = state() or s
     win2 = find_win(s)
     if not win2:
@@ -165,8 +164,50 @@ def resize_to_fraction(fraction: float, window_id: int | None = None,
         return  # something else interfered — bail rather than spin
 
     remaining = max(0, int(round(abs(target - new_w) / step)))
-    for _ in range(min(remaining, max_steps - 1)):
-        action(act)
+    n = min(remaining, max_steps - 1)
+    if n <= 0:
+        return
+    _fast_chain(f"/action/{act}", n)
+
+
+def _fast_chain(path: str, n: int) -> None:
+    """POST the same path N times over a single persistent HTTP connection.
+
+    Avoids per-call TCP setup. On localhost the difference is small
+    (~1-3ms per call), but compounded over 30+ calls it roughly halves
+    the total wall time, which is what makes the resize "slide" feel
+    snappy instead of laggy. Suppresses individual errors so one
+    transient hiccup doesn't abort the whole chain."""
+    import http.client
+    try:
+        conn = http.client.HTTPConnection(HOST, PORT, timeout=TIMEOUT_S)
+    except Exception as e:
+        print(f"[winri] fast_chain open failed: {e}", flush=True)
+        return
+    try:
+        for _ in range(n):
+            try:
+                conn.request("POST", path, headers={"Connection": "keep-alive"})
+                resp = conn.getresponse()
+                resp.read()
+            except Exception as e:
+                # Recover by reopening the connection once
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+                try:
+                    conn = http.client.HTTPConnection(HOST, PORT, timeout=TIMEOUT_S)
+                    conn.request("POST", path)
+                    conn.getresponse().read()
+                except Exception as e2:
+                    print(f"[winri] fast_chain recovery failed: {e2}", flush=True)
+                    return
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 def resize_quarter(window_id: int | None = None) -> None:

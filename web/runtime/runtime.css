@@ -91,9 +91,13 @@ html, body {
   text-transform: uppercase;
   transition: background 60ms linear, color 60ms linear;
 }
-.dd-sb-menu:hover, .dd-sb-menu:active { background: var(--surface-2); color: var(--text); }
+@media (hover: hover) {
+  .dd-sb-menu:hover { background: var(--surface-2); color: var(--text); }
+  .dd-sb-menu:hover .dd-sb-glyph { color: var(--accent); }
+}
+.dd-sb-menu:active { background: var(--surface-2); color: var(--text); }
 .dd-sb-glyph { font-size: 28px; line-height: 1; color: var(--text); }
-.dd-sb-menu:hover .dd-sb-glyph, .dd-sb-menu:active .dd-sb-glyph { color: var(--accent); }
+.dd-sb-menu:active .dd-sb-glyph { color: var(--accent); }
 .dd-sb-lbl { font-size: 11px; }
 .dd-sb-spacer { flex: 1; }
 .dd-sb-status {
@@ -504,16 +508,26 @@ html, body {
   gap: 8px;
   transition: background 60ms linear, color 60ms linear, border-color 60ms linear;
 }
-.dd-winri-btn:hover, .dd-winri-btn:active {
+/* :hover is only applied on real-hover devices (desktop) — on touch
+   it would stick after a tap and the button would look stuck "on". */
+@media (hover: hover) {
+  .dd-winri-btn:hover {
+    background: var(--accent); color: var(--bg); border-color: var(--accent);
+  }
+  .dd-winri-btn:hover .dd-winri-glyph { color: var(--bg); }
+  .dd-winri-btn.is-warn:hover {
+    background: var(--danger); border-color: var(--danger); color: var(--bg);
+  }
+}
+.dd-winri-btn:active {
   background: var(--accent); color: var(--bg); border-color: var(--accent);
 }
+.dd-winri-btn:active .dd-winri-glyph { color: var(--bg); }
 .dd-winri-btn .dd-winri-glyph {
   font-size: 28px; line-height: 1; color: var(--text);
 }
-.dd-winri-btn:hover .dd-winri-glyph,
-.dd-winri-btn:active .dd-winri-glyph { color: var(--bg); }
 .dd-winri-btn.is-warn { color: var(--danger); }
-.dd-winri-btn.is-warn:hover { background: var(--danger); border-color: var(--danger); color: var(--bg); }
+.dd-winri-btn.is-warn:active { background: var(--danger); border-color: var(--danger); color: var(--bg); }
 
 .dd-winri-section-head {
   font-family: var(--font-mono);
