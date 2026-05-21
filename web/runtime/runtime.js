@@ -85,8 +85,9 @@ document.addEventListener("fullscreenchange", () => {
 applyTheme(document.documentElement, DEFAULT_THEME);
 
 const stage       = document.getElementById("stage");
-const sbName      = document.getElementById("sb-name");
-const sbSource    = document.getElementById("sb-source");
+const tbName      = document.getElementById("tb-name");
+const tbSub       = document.getElementById("tb-sub");
+const tbSource    = document.getElementById("tb-source");
 const sbStatus    = document.getElementById("sb-status");
 const sbStatusLbl = document.getElementById("sb-status-lbl");
 const overlay     = document.getElementById("overlay");
@@ -127,23 +128,28 @@ function renderLayout(layout, theme) {
     stage.appendChild(el);
     if (w.id) widgetEls.set(w.id, { el, widget: w });
   }
-  // Side-bar context display
+  // Top titlebar: big app context + focused window subhead
   const ctx = layout._context || {};
   const synth = ctx.synthetic;
   const matched = ctx.matched;
+  let bigName = "—";
+  let source = "";
   if (matched) {
-    sbName.textContent = layout.name || "—";
-    sbSource.textContent = "matched";
+    bigName = layout.name || "—";
+    source = "matched";
   } else if (synth) {
-    sbName.textContent = (ctx.process || "?").replace(/\.exe$/i, "").toUpperCase();
-    sbSource.textContent = "auto windows";
+    bigName = (ctx.process || "?").replace(/\.exe$/i, "").toUpperCase();
+    source = "auto windows";
   } else if (ctx.process) {
-    sbName.textContent = (ctx.process || "?").toUpperCase();
-    sbSource.textContent = "no config";
+    bigName = (ctx.process || "?").toUpperCase();
+    source = "no config";
   } else {
-    sbName.textContent = layout.name || "—";
-    sbSource.textContent = "";
+    bigName = layout.name || "—";
+    source = "";
   }
+  tbName.textContent = bigName;
+  tbSub.textContent = ctx.title || "";
+  tbSource.textContent = source;
 }
 
 window.addEventListener("resize", () => {
@@ -188,8 +194,10 @@ function openOverlay(kind) {
   overlay.hidden = false;
   overlayBody.innerHTML = "";
   overlayBody.classList.remove("is-bookmarks");
+  overlayBody.classList.remove("is-winri");
   overlayBack.hidden = true;
   _appsDrill = null;
+  stopWinriPoll();
   if (kind === "apps") {
     overlayTitle.textContent = "Apps";
     fetchApps();
@@ -199,6 +207,9 @@ function openOverlay(kind) {
   } else if (kind === "bookmarks") {
     overlayTitle.textContent = "Bookmarks";
     fetchBookmarks();
+  } else if (kind === "winri") {
+    overlayTitle.textContent = "Winri — tiling controller";
+    openWinri();
   }
 }
 
@@ -208,6 +219,7 @@ function closeOverlay() {
   overlay.dataset.kind = "";
   overlayBack.hidden = true;
   _appsDrill = null;
+  stopWinriPoll();
 }
 
 overlayBack.addEventListener("click", () => {
@@ -455,6 +467,158 @@ function buildTile({ title, meta, icon, cls = "" }) {
   body.appendChild(m);
   tile.appendChild(body);
   return tile;
+}
+
+// ───────── Winri overlay ─────────
+let _winriPollTimer = null;
+
+async function openWinri() {
+  overlayBody.classList.add("is-winri");
+  overlayBody.innerHTML = "<div class='dd-winri-empty'>loading winri…</div>";
+  await renderWinri();
+  _winriPollTimer = setInterval(() => {
+    // Don't refresh if the overlay closed
+    if (overlay.hidden || overlay.dataset.kind !== "winri") {
+      stopWinriPoll(); return;
+    }
+    renderWinri({ silent: true });
+  }, 1500);
+}
+
+function stopWinriPoll() {
+  if (_winriPollTimer) { clearInterval(_winriPollTimer); _winriPollTimer = null; }
+}
+
+async function renderWinri({ silent = false } = {}) {
+  let state;
+  try {
+    const r = await fetch("/api/winri/state?t=" + encodeURIComponent(token));
+    if (r.status === 503) {
+      overlayBody.innerHTML =
+        "<div class='dd-winri-empty'>" +
+        "winri API not reachable on <code>127.0.0.1:47812</code>.<br>" +
+        "Enable it in <code>%APPDATA%/winri/config.toml</code>:<br><br>" +
+        "<code>[api]<br>enabled = true<br>port = 47812</code><br><br>" +
+        "Then restart winri (Win+Esc, then re-launch)." +
+        "</div>";
+      return;
+    }
+    state = await r.json();
+  } catch (e) {
+    if (!silent) overlayBody.innerHTML = `<div class='dd-winri-empty'>winri fetch failed: ${e}</div>`;
+    return;
+  }
+
+  // Build the full panel (silent re-renders rebuild too — DOM is small)
+  overlayBody.innerHTML = "";
+
+  // Section: Navigation
+  const navHead = section("Navigate focus");
+  overlayBody.appendChild(navHead);
+  const navGrid = document.createElement("div");
+  navGrid.className = "dd-winri-grid";
+  navGrid.appendChild(winriBtn({ glyph: "◀",  label: "Prev",   action: "focus-prev" }));
+  navGrid.appendChild(winriBtn({ glyph: "▶",  label: "Next",   action: "focus-next" }));
+  navGrid.appendChild(winriBtn({ glyph: "⇆◀", label: "Swap ←", action: "swap-prev" }));
+  navGrid.appendChild(winriBtn({ glyph: "▶⇆", label: "Swap →", action: "swap-next" }));
+  overlayBody.appendChild(navGrid);
+
+  // Section: Scroll
+  overlayBody.appendChild(section("Scroll the strip"));
+  const scrollGrid = document.createElement("div");
+  scrollGrid.className = "dd-winri-grid is-tight";
+  scrollGrid.appendChild(winriBtn({ glyph: "◀◀", label: "Far",  scroll: -600 }));
+  scrollGrid.appendChild(winriBtn({ glyph: "◀",  label: "Left", scroll: -200 }));
+  scrollGrid.appendChild(winriBtn({ glyph: "▶",  label: "Right", scroll: 200 }));
+  scrollGrid.appendChild(winriBtn({ glyph: "▶▶", label: "Far",  scroll: 600 }));
+  overlayBody.appendChild(scrollGrid);
+
+  // Section: Resize
+  overlayBody.appendChild(section("Resize focused window"));
+  const sizeGrid = document.createElement("div");
+  sizeGrid.className = "dd-winri-grid";
+  sizeGrid.appendChild(winriBtn({ glyph: "▮", label: "1/4",  quarter: true }));
+  sizeGrid.appendChild(winriBtn({ glyph: "▮▮", label: "1/2", action: "resize-halfscreen" }));
+  sizeGrid.appendChild(winriBtn({ glyph: "▮▮▮▮", label: "Full", action: "resize-fullscreen" }));
+  sizeGrid.appendChild(winriBtn({ glyph: "−", label: "Width −", action: "width-decrement" }));
+  sizeGrid.appendChild(winriBtn({ glyph: "+", label: "Width +", action: "width-increment" }));
+  overlayBody.appendChild(sizeGrid);
+
+  // Section: Modes
+  overlayBody.appendChild(section("Modes"));
+  const modeGrid = document.createElement("div");
+  modeGrid.className = "dd-winri-grid";
+  modeGrid.appendChild(winriBtn({ glyph: "▦", label: "Overview",       action: "open-overview" }));
+  modeGrid.appendChild(winriBtn({ glyph: "▢", label: "Close overview", action: "close-overview" }));
+  modeGrid.appendChild(winriBtn({ glyph: "↻", label: "Refresh",        action: "refresh" }));
+  modeGrid.appendChild(winriBtn({ glyph: "✕", label: "Exit winri",     action: "exit", warn: true }));
+  overlayBody.appendChild(modeGrid);
+
+  // Section: Live window strip
+  overlayBody.appendChild(section(`Tile strip · ${state.windows?.length || 0} windows`));
+  const strip = document.createElement("div");
+  strip.className = "dd-winri-strip";
+  for (const w of state.windows || []) {
+    const item = document.createElement("button");
+    item.className = "dd-winri-strip-item" + (w.focused ? " is-focused" : "");
+    const title = document.createElement("div");
+    title.className = "dd-winri-strip-title";
+    title.textContent = w.title || "(untitled)";
+    item.appendChild(title);
+    const proc = document.createElement("div");
+    proc.className = "dd-winri-strip-proc";
+    proc.textContent = `${w.process || "—"}  ·  w:${Math.round(w.width || 0)}px`;
+    item.appendChild(proc);
+    item.addEventListener("click", async () => {
+      await fetch(`/api/winri/focus/${w.id}?t=${encodeURIComponent(token)}`, { method: "POST" });
+      renderWinri({ silent: true });
+    });
+    strip.appendChild(item);
+  }
+  overlayBody.appendChild(strip);
+}
+
+function section(text) {
+  const el = document.createElement("div");
+  el.className = "dd-winri-section-head";
+  el.textContent = text;
+  return el;
+}
+
+function winriBtn({ glyph, label, action, scroll, quarter, warn }) {
+  const b = document.createElement("button");
+  b.className = "dd-winri-btn" + (warn ? " is-warn" : "");
+  const g = document.createElement("span");
+  g.className = "dd-winri-glyph";
+  g.textContent = glyph;
+  b.appendChild(g);
+  const l = document.createElement("span");
+  l.textContent = label;
+  b.appendChild(l);
+  b.addEventListener("click", async () => {
+    if (navigator.vibrate) navigator.vibrate(8);
+    try {
+      if (action) {
+        await fetch(`/api/winri/action/${action}?t=${encodeURIComponent(token)}`, { method: "POST" });
+      } else if (scroll !== undefined) {
+        await fetch(`/api/winri/scroll?t=${encodeURIComponent(token)}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ delta: scroll }),
+        });
+      } else if (quarter) {
+        await fetch(`/api/winri/resize/quarter?t=${encodeURIComponent(token)}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        });
+      }
+      renderWinri({ silent: true });
+    } catch (e) {
+      console.error("winri action failed", e);
+    }
+  });
+  return b;
 }
 
 function hostnameOf(url) {

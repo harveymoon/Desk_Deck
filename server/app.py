@@ -23,7 +23,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import actions, auth, chrome, config, desktops, dynamic, filters, log_buffer, registry, themes, watcher
+from . import actions, auth, chrome, config, desktops, dynamic, filters, log_buffer, registry, themes, watcher, winri
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
@@ -614,6 +614,88 @@ def switch_virtual_desktop(index: int, request: Request) -> JSONResponse:
     auth.require_token(request)
     ok = desktops.switch_to(index)
     return JSONResponse({"ok": ok})
+
+
+# ───────── Winri (local tiling-WM HTTP API) proxy ─────────
+
+@app.get("/api/winri/state")
+def winri_state(request: Request) -> JSONResponse:
+    auth.require_token(request)
+    s = winri.state()
+    if s is None:
+        return JSONResponse({"available": False, "error": "winri api unreachable on 127.0.0.1:47812"}, status_code=503)
+    return JSONResponse({"available": True, **s})
+
+
+@app.get("/api/winri/windows")
+def winri_windows(request: Request) -> JSONResponse:
+    auth.require_token(request)
+    return JSONResponse({"available": winri.available(), "windows": winri.windows()})
+
+
+@app.post("/api/winri/action/{name}")
+def winri_action(name: str, request: Request) -> JSONResponse:
+    auth.require_token(request)
+    try:
+        status, _, _ = winri.action(name)
+        return JSONResponse({"ok": status < 400, "status": status})
+    except Exception as e:
+        raise HTTPException(503, f"winri unreachable: {e}")
+
+
+@app.post("/api/winri/focus/{wid}")
+def winri_focus(wid: int, request: Request) -> JSONResponse:
+    auth.require_token(request)
+    try:
+        status, _, _ = winri.focus(wid)
+        return JSONResponse({"ok": status < 400, "status": status})
+    except Exception as e:
+        raise HTTPException(503, f"winri unreachable: {e}")
+
+
+class _WinriScrollBody(BaseModel):
+    delta: float | None = None
+    offset: float | None = None
+
+
+@app.post("/api/winri/scroll")
+async def winri_scroll(request: Request) -> JSONResponse:
+    auth.require_token(request)
+    body = await request.json()
+    try:
+        status, _, _ = winri.scroll(delta=body.get("delta"), offset=body.get("offset"))
+        return JSONResponse({"ok": status < 400, "status": status})
+    except Exception as e:
+        raise HTTPException(503, f"winri unreachable: {e}")
+
+
+@app.post("/api/winri/resize/quarter")
+async def winri_resize_quarter(request: Request) -> JSONResponse:
+    """No native quarter action in winri; approximate by halving then trimming."""
+    auth.require_token(request)
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass
+    wid = body.get("window_id") if isinstance(body, dict) else None
+    try:
+        winri.resize_quarter(int(wid) if wid else None)
+        return JSONResponse({"ok": True})
+    except Exception as e:
+        raise HTTPException(503, f"winri unreachable: {e}")
+
+
+@app.get("/api/winri/thumbnail/{wid}")
+def winri_thumbnail(wid: int, request: Request) -> Response:
+    auth.require_token(request)
+    try:
+        status, body, ctype = winri.thumbnail(wid)
+        if status != 200:
+            return Response(body, status_code=status, media_type=ctype)
+        return Response(body, media_type=ctype or "image/png")
+    except Exception as e:
+        raise HTTPException(503, f"winri unreachable: {e}")
 
 
 @app.post("/api/focus/{hwnd}")
