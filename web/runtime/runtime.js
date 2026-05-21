@@ -112,6 +112,22 @@ function setStatus(text, cls = "") {
   sbStatus.title = text;
 }
 
+// Fit the stage to the current viewport. Pulled out so the resize
+// listener can call it WITHOUT tearing down every widget — rebuilding
+// on resize destroys any focused text input, which Android does as
+// soon as the soft keyboard opens (the keyboard shrinks the viewport
+// → resize fires → input gone → keyboard dismissed in a loop).
+function fitStage(canvas) {
+  const cw = (canvas && canvas.width)  || 1600;
+  const ch = (canvas && canvas.height) || 1000;
+  const vw = window.innerWidth - 112;
+  const vh = window.innerHeight;
+  const scale = Math.min(vw / cw, vh / ch);
+  stage.style.width  = `${cw}px`;
+  stage.style.height = `${ch}px`;
+  stage.style.transform = `scale(${scale}) translate(${(vw - cw * scale) / 2 / scale}px, ${(vh - ch * scale) / 2 / scale}px)`;
+}
+
 function renderLayout(layout, theme) {
   currentLayout = layout;
   widgetEls = new Map();
@@ -119,15 +135,7 @@ function renderLayout(layout, theme) {
   if (theme) applyTheme(document.documentElement, theme);
 
   const canvas = layout.canvas || {};
-  const cw = canvas.width  || 1600;
-  const ch = canvas.height || 1000;
-
-  const vw = window.innerWidth - 112;
-  const vh = window.innerHeight;
-  const scale = Math.min(vw / cw, vh / ch);
-  stage.style.width  = `${cw}px`;
-  stage.style.height = `${ch}px`;
-  stage.style.transform = `scale(${scale}) translate(${(vw - cw * scale) / 2 / scale}px, ${(vh - ch * scale) / 2 / scale}px)`;
+  fitStage(canvas);
 
   for (const w of layout.widgets || []) {
     const el = renderWidget(w, { onEvent: send });
@@ -159,7 +167,10 @@ function renderLayout(layout, theme) {
 }
 
 window.addEventListener("resize", () => {
-  if (currentLayout) renderLayout(currentLayout, null);
+  // Just re-fit the stage transform. NEVER call renderLayout here — it
+  // tears down every widget, which kills focused inputs and dismisses
+  // the Android soft keyboard the instant it opens.
+  if (currentLayout) fitStage(currentLayout.canvas || {});
 });
 
 const wsUrl = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/live?t=${encodeURIComponent(token || "")}&device=tablet`;
