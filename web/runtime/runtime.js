@@ -471,6 +471,7 @@ function buildTile({ title, meta, icon, cls = "" }) {
 
 // ───────── Winri overlay ─────────
 let _winriPollTimer = null;
+let _winriThumbTimer = null;
 let _winriBuilt = false;     // controls vs strip are split so polls don't wipe scroll
 let _winriStripEl = null;
 let _winriStripHead = null;
@@ -489,10 +490,33 @@ async function openWinri() {
     }
     refreshWinri({ silent: true });
   }, 1500);
+  // Refresh thumbnails on a slower cadence — they're heavier than the state poll
+  _winriThumbTimer = setInterval(() => {
+    if (overlay.hidden || overlay.dataset.kind !== "winri") {
+      stopWinriPoll(); return;
+    }
+    refreshAllThumbnails();
+  }, 12000);
 }
 
 function stopWinriPoll() {
-  if (_winriPollTimer) { clearInterval(_winriPollTimer); _winriPollTimer = null; }
+  if (_winriPollTimer)  { clearInterval(_winriPollTimer);  _winriPollTimer  = null; }
+  if (_winriThumbTimer) { clearInterval(_winriThumbTimer); _winriThumbTimer = null; }
+}
+
+function thumbnailUrl(wid, bust) {
+  const q = bust ? `&v=${bust}` : "";
+  return `/api/winri/thumbnail/${wid}?t=${encodeURIComponent(token)}&w=320${q}`;
+}
+
+function refreshAllThumbnails() {
+  if (!_winriStripEl) return;
+  const v = Date.now();
+  for (const item of _winriStripEl.children) {
+    const wid = item.dataset.wid;
+    const img = item.querySelector("img.dd-winri-strip-thumb");
+    if (img && wid) img.src = thumbnailUrl(wid, v);
+  }
 }
 
 async function refreshWinri({ silent = false } = {}) {
@@ -639,21 +663,48 @@ function updateWinriStrip(state) {
       item = document.createElement("button");
       item.className = "dd-winri-strip-item";
       item.dataset.wid = wid;
+
+      // Thumbnail wrap with an <img> that lazy-loads the downscaled JPEG.
+      const wrap = document.createElement("div");
+      wrap.className = "dd-winri-strip-thumb-wrap";
+      const img = document.createElement("img");
+      img.className = "dd-winri-strip-thumb";
+      img.loading = "lazy";
+      img.decoding = "async";
+      img.alt = "";
+      img.src = thumbnailUrl(wid);
+      img.addEventListener("error", () => {
+        img.style.display = "none";
+        if (!wrap.querySelector(".dd-winri-strip-thumb-placeholder")) {
+          const ph = document.createElement("div");
+          ph.className = "dd-winri-strip-thumb-placeholder";
+          ph.textContent = "no preview";
+          wrap.appendChild(ph);
+        }
+      });
+      wrap.appendChild(img);
+      item.appendChild(wrap);
+
+      const body = document.createElement("div");
+      body.className = "dd-winri-strip-body";
       const title = document.createElement("div");
       title.className = "dd-winri-strip-title";
-      item.appendChild(title);
+      body.appendChild(title);
       const proc = document.createElement("div");
       proc.className = "dd-winri-strip-proc";
-      item.appendChild(proc);
+      body.appendChild(proc);
+      item.appendChild(body);
+
       item.addEventListener("click", async () => {
         await fetch(`/api/winri/focus/${wid}?t=${encodeURIComponent(token)}`, { method: "POST" });
         // Don't full-refresh here; the 1.5s poll will catch it without disturbing scroll.
       });
     }
-    // Update content in place
+    // Update text content in place
     item.classList.toggle("is-focused", !!w.focused);
-    item.children[0].textContent = w.title || "(untitled)";
-    item.children[1].textContent = `${w.process || "—"}  ·  w:${Math.round(w.width || 0)}px`;
+    const body = item.querySelector(".dd-winri-strip-body");
+    body.children[0].textContent = w.title || "(untitled)";
+    body.children[1].textContent = `${w.process || "—"}  ·  w:${Math.round(w.width || 0)}px`;
     // Ensure the item sits at its expected position (after `prev`, or as
     // firstChild if prev is null). Bug fix: a new item starts detached from
     // the DOM, so insertBefore(item, expectedPos) both moves AND attaches.

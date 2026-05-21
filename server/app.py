@@ -701,13 +701,16 @@ async def winri_resize_smooth(kind: str, request: Request) -> JSONResponse:
 
 
 @app.get("/api/winri/thumbnail/{wid}")
-def winri_thumbnail(wid: int, request: Request) -> Response:
+def winri_thumbnail(wid: int, request: Request, w: int = 320, q: int = 78) -> Response:
+    """Downsized JPEG of the window's contents, cached server-side for ~6s.
+    `w` caps the long side in px (default 320). `q` is JPEG quality (default 78)."""
     auth.require_token(request)
     try:
-        status, body, ctype = winri.thumbnail(wid)
+        status, body, ctype = winri.thumbnail_resized(wid, max_dim=max(32, min(w, 1024)), quality=max(40, min(q, 95)))
         if status != 200:
             return Response(body, status_code=status, media_type=ctype)
-        return Response(body, media_type=ctype or "image/png")
+        return Response(body, media_type=ctype or "image/jpeg",
+                        headers={"Cache-Control": "no-store"})
     except Exception as e:
         raise HTTPException(503, f"winri unreachable: {e}")
 

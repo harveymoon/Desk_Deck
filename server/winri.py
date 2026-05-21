@@ -103,6 +103,58 @@ def thumbnail(window_id: int) -> tuple[int, bytes, str]:
     return _request("GET", f"/windows/{window_id}/thumbnail")
 
 
+# Server-side downscaled thumbnail cache so the tablet doesn't pull
+# multi-megabyte PNGs. Cached by (hwnd, max_dim) and refreshed every TTL_S.
+_THUMB_CACHE: dict[tuple[int, int], tuple[float, bytes]] = {}
+_THUMB_TTL_S = 6.0
+_THUMB_CACHE_MAX = 200
+
+
+def thumbnail_resized(window_id: int, max_dim: int = 320, quality: int = 78) -> tuple[int, bytes, str]:
+    """Return a downsized JPEG (or original on failure to decode).
+
+    Cached per (hwnd, size) for THUMB_TTL_S so concurrent tablet requests
+    and the periodic strip refresh don't repeatedly poke winri."""
+    import io, time
+    try:
+        from PIL import Image
+    except Exception:
+        return thumbnail(window_id)
+
+    now = time.time()
+    key = (int(window_id), int(max_dim))
+    cached = _THUMB_CACHE.get(key)
+    if cached and now - cached[0] < _THUMB_TTL_S:
+        return 200, cached[1], "image/jpeg"
+
+    status, body, ctype = thumbnail(window_id)
+    if status != 200:
+        return status, body, ctype
+
+    try:
+        img = Image.open(io.BytesIO(body))
+        img.thumbnail((max_dim, max_dim), Image.LANCZOS)
+        if img.mode == "RGBA":
+            bg = Image.new("RGB", img.size, (10, 10, 12))  # matches --bg
+            bg.paste(img, mask=img.split()[3])
+            img = bg
+        elif img.mode != "RGB":
+            img = img.convert("RGB")
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=quality, optimize=True)
+        data = buf.getvalue()
+    except Exception as e:
+        print(f"[winri] thumbnail resize failed for hwnd={window_id}: {e}", flush=True)
+        return status, body, ctype
+
+    _THUMB_CACHE[key] = (now, data)
+    if len(_THUMB_CACHE) > _THUMB_CACHE_MAX:
+        # Drop the oldest entries
+        for k, _ in sorted(_THUMB_CACHE.items(), key=lambda kv: kv[1][0])[: _THUMB_CACHE_MAX // 4]:
+            _THUMB_CACHE.pop(k, None)
+    return 200, data, "image/jpeg"
+
+
 def resize_to_fraction(fraction: float, window_id: int | None = None,
                        max_steps: int = 80) -> None:
     """Animate the focused window's width to ~fraction * screen_width by
