@@ -1516,21 +1516,15 @@ function openColorPicker({ anchor, hex, alpha, onChange, onAlpha, onClose }) {
     if (onClose) onClose();
   }
 
-  // ---- Position the popup ----
+  // ---- Position the popup (centered on screen) ----
   backdrop.appendChild(popup);
   document.body.appendChild(backdrop);
   // Defer to next frame so getBoundingClientRect on inner elements is valid.
   requestAnimationFrame(() => {
-    const ar = anchor.getBoundingClientRect();
     const pr = popup.getBoundingClientRect();
-    // Prefer below the anchor; flip above if it doesn't fit.
-    let top = ar.bottom + 8;
-    if (top + pr.height > window.innerHeight - 8) {
-      top = Math.max(8, ar.top - pr.height - 8);
-    }
-    let left = ar.left + ar.width / 2 - pr.width / 2;
-    left = Math.max(8, Math.min(window.innerWidth - pr.width - 8, left));
-    popup.style.top = `${top}px`;
+    const top  = Math.max(8, (window.innerHeight - pr.height) / 2);
+    const left = Math.max(8, (window.innerWidth  - pr.width)  / 2);
+    popup.style.top  = `${top}px`;
     popup.style.left = `${left}px`;
     paintAll();
   });

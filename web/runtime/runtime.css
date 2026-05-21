@@ -992,26 +992,30 @@ body.has-overlay .dd-sidebar { display: none; }
   position: fixed;
   background: var(--surface);
   border: var(--border-w) solid var(--accent);
-  padding: 12px;
+  padding: 20px;
   display: grid;
-  grid-template-columns: 1fr 24px 24px;
+  grid-template-columns: 1fr 48px 48px;
   grid-template-rows: auto auto;
   grid-template-areas:
     "sv hue alpha"
     "footer footer footer";
-  gap: 10px;
-  width: 280px;
+  gap: 18px;
+  width: 560px;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 14px;
   color: var(--text);
   touch-action: none;
 }
 .dd-cp-popup:not(:has(.dd-cp-alpha)) {
-  grid-template-columns: 1fr 24px;
+  grid-template-columns: 1fr 48px;
   grid-template-areas:
     "sv hue"
     "footer footer";
 }
+.dd-cp-hue, .dd-cp-alpha { width: 48px; }
+.dd-cp-cursor { width: 22px; height: 22px; border-width: 3px; }
+.dd-cp-hex { font-size: 18px; letter-spacing: 0.1em; }
+.dd-cp-close { width: 44px; height: 44px; font-size: 24px; }
 .dd-cp-sv {
   grid-area: sv;
   position: relative;
