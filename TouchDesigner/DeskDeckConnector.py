@@ -31,50 +31,6 @@ import sys
 import TDFunctions as TDF  # ships with TouchDesigner
 
 
-class _PrintMirror:
-    """Wraps a file-like object (sys.stdout / sys.stderr); each completed
-    line is passed to `sink` IN ADDITION to the original write. Used by the
-    optional Mirrorprint feature so TD's textport output is shadowed to
-    the tablet log textbox."""
-
-    def __init__(self, original, sink):
-        self.original = original
-        self.sink = sink
-        self._partial = ""
-
-    def write(self, text):
-        try:
-            self.original.write(text)
-        except Exception:
-            pass
-        if not text:
-            return
-        self._partial += text
-        while "\n" in self._partial:
-            line, self._partial = self._partial.split("\n", 1)
-            line = line.rstrip("\r")
-            if line:
-                try:
-                    self.sink(line)
-                except Exception:
-                    pass
-
-    def flush(self):
-        try:
-            self.original.flush()
-        except Exception:
-            pass
-
-    def isatty(self):
-        try:
-            return self.original.isatty()
-        except Exception:
-            return False
-
-    def fileno(self):
-        return self.original.fileno()
-
-
 class DeskDeckConnector:
     def __init__(self, ownerComp):
         self.ownerComp = ownerComp
@@ -366,6 +322,10 @@ class DeskDeckConnector:
         if "status" in self._subs:
             self._diff_status()
 
+        # If Streamtextport is on, re-assert sys.stdout = op('log') in case
+        # TD's per-textport-execution swap clobbered it. Cheap no-op when off.
+        self._sync_print_mirror()
+
         # Always flush log buffer (server filters by subscriber list).
         self._flush_log()
 
@@ -603,27 +563,49 @@ class DeskDeckConnector:
           op('Desk_Deck').par.Streamtextport = True
           op('Desk_Deck').SyncPrintMirror()
         """
-        self._sync_print_mirror()
+        self._sync_print_mirror(force=True)
 
-    def _sync_print_mirror(self):
-        """Install / restore the sys.stdout & sys.stderr mirror based on the
-        Streamtextport toggle on the .tox parent. Safe to call repeatedly."""
+    def _sync_print_mirror(self, force=False):
+        """Install / restore the sys.stdout & sys.stderr mirror based on
+        the Streamtextport toggle. TD doesn't dispatch print() through a
+        generic file-like wrapper — only through file-API-compliant objects
+        like TextDATs. Setting sys.stdout directly to op('log') is the
+        approach that actually works (TD swaps the textport DAT in
+        the same way internally).
+
+        TD also re-asserts its own stdout per textport execution, so the
+        mirror has to be re-installed periodically — Tick() calls this
+        every tick when Streamtextport is on so prints typed after a
+        prior textport command still get captured."""
         want = bool(self._pp("Streamtextport", False))
-        currently_mirroring = isinstance(sys.stdout, _PrintMirror)
-        if want and not currently_mirroring:
-            self._orig_stdout = sys.stdout
-            self._orig_stderr = sys.stderr
-            sys.stdout = _PrintMirror(sys.stdout, self.Log)
-            sys.stderr = _PrintMirror(sys.stderr, self.Log)
-            self._dbg("Streamtextport ON — print()/debug() output mirrors to tablet log")
-        elif not want and currently_mirroring:
+        log_dat = op("log")
+
+        if want and log_dat is None:
+            if force:
+                self._dbg("Streamtextport: can't mirror — no `log` textDAT in Desk_Deck.tox")
+            return
+
+        if want:
+            # Re-install if TD swapped sys.stdout back to its own textport.
+            if sys.stdout is not log_dat:
+                if self._orig_stdout is None:
+                    self._orig_stdout = sys.stdout
+                if self._orig_stderr is None:
+                    self._orig_stderr = sys.stderr
+                sys.stdout = log_dat
+                sys.stderr = log_dat
+                if force:
+                    self._dbg("Streamtextport ON — sys.stdout & stderr now write to op('log')")
+        else:
+            # Restore originals if we previously installed.
             if self._orig_stdout is not None:
                 sys.stdout = self._orig_stdout
+                self._orig_stdout = None
             if self._orig_stderr is not None:
                 sys.stderr = self._orig_stderr
-            self._orig_stdout = None
-            self._orig_stderr = None
-            self._dbg("Streamtextport OFF")
+                self._orig_stderr = None
+            if force:
+                self._dbg("Streamtextport OFF — sys.stdout restored")
 
     def RegisterMacro(self, name, fn):
         """Register a callable invokable from the tablet via
